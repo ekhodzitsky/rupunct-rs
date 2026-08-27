@@ -1,0 +1,27 @@
+[package]
+name = "rupunct"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+description = "On-device Russian punctuation and casing restoration (RUPunct BERT)."
+repository = "https://github.com/ekhodzitsky/rupunct-rs"
+authors = ["Evgeny Khodzitsky"]
+
+[[bin]]
+name = "rupunct"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+safetensors = "0.8"
+memmap2 = "0.9"
+rayon = "1"
+gemm = "0.19"
+
+[dev-dependencies]
+tempfile = "3"
