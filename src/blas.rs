@@ -8,6 +8,11 @@
 /// `C = alpha * op(A) * op(B) + beta * C` with **column-major** storage (BLAS).
 ///
 /// `transa`/`transb`: `b'N'` or `b'T'`. Leading dims `lda`/`ldb`/`ldc` follow BLAS.
+///
+/// # Safety
+/// `a`, `b`, and `c` must be large enough for the BLAS leading dimensions
+/// (`lda`/`ldb`/`ldc`) and the `m`/`n`/`k` extents. Slices must not alias
+/// `c` with `a` or `b`.
 #[cfg(target_os = "macos")]
 pub unsafe fn sgemm(
     transa: u8,
@@ -88,6 +93,8 @@ pub fn gemm_row_x_col(
 
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: debug_assert checked lens; row-major (m,k)×col-major (k,n)
+        // maps to this sgemm layout; dst is uniquely borrowed.
         unsafe {
             sgemm(
                 b'T', b'N', n as i32, m as i32, k as i32, alpha, w_col, k as i32, lhs, k as i32,
@@ -114,6 +121,8 @@ pub fn gemm_row_x_col(
             }
             let r1 = m.min(r0 + rows_per);
             let rows = r1 - r0;
+            // SAFETY: row slabs are disjoint across `tid`; `lhs`/`w_col` are
+            // read-only for the parallel map; `dst` writes do not overlap.
             let lhs_slab = unsafe {
                 std::slice::from_raw_parts((lhs_base as *const f32).add(r0 * k), rows * k)
             };
@@ -157,6 +166,7 @@ pub fn gemm_nn(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]
 
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: lengths checked; `c` is uniquely borrowed.
         unsafe {
             sgemm(
                 b'N', b'N', n as i32, m as i32, k as i32, 1.0, b, n as i32, a, k as i32, 0.0, c,
@@ -168,6 +178,7 @@ pub fn gemm_nn(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]
     #[cfg(not(target_os = "macos"))]
     {
         use gemm::{Parallelism, gemm};
+        // SAFETY: lengths checked; `c` is uniquely borrowed.
         unsafe {
             gemm(
                 m,
@@ -207,6 +218,7 @@ pub fn gemm_scores(t: usize, d: usize, q: &[f32], k: &[f32], scores: &mut [f32])
 
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: lengths checked; `scores` is uniquely borrowed.
         unsafe {
             sgemm(
                 b'T', b'N', t as i32, t as i32, d as i32, 1.0, k, d as i32, q, d as i32, 0.0,
@@ -218,6 +230,7 @@ pub fn gemm_scores(t: usize, d: usize, q: &[f32], k: &[f32], scores: &mut [f32])
     #[cfg(not(target_os = "macos"))]
     {
         use gemm::{Parallelism, gemm};
+        // SAFETY: lengths checked; `scores` is uniquely borrowed.
         unsafe {
             gemm(
                 t,
@@ -252,6 +265,7 @@ pub fn gemm_attn_v(t: usize, d: usize, scores: &[f32], v: &[f32], out: &mut [f32
 
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: lengths checked; `out` is uniquely borrowed.
         unsafe {
             sgemm(
                 b'N', b'N', d as i32, t as i32, t as i32, 1.0, v, d as i32, scores, t as i32, 0.0,
@@ -263,6 +277,7 @@ pub fn gemm_attn_v(t: usize, d: usize, scores: &[f32], v: &[f32], out: &mut [f32
     #[cfg(not(target_os = "macos"))]
     {
         use gemm::{Parallelism, gemm};
+        // SAFETY: lengths checked; `out` is uniquely borrowed.
         unsafe {
             gemm(
                 t,

@@ -5,6 +5,9 @@ use std::path::PathBuf;
 
 use crate::{Punctuator, default_model_dir};
 
+/// Reject oversized JSONL frames so a single line cannot exhaust RAM.
+pub(crate) const MAX_JSONL_LINE: usize = 1_048_576;
+
 pub fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run_from(
@@ -63,7 +66,8 @@ where
     let punct = Punctuator::load(&dir)
         .map_err(|e| format!("load punct model from {}: {e}", dir.display()))?;
     if let Some(t) = text {
-        writeln!(stdout, "{}", punct.restore_lossy(&t)).map_err(io_err)?;
+        let out = punct.restore(&t).map_err(|e| e.to_string())?;
+        writeln!(stdout, "{out}").map_err(io_err)?;
         return Ok(());
     }
     jsonl(&punct, stdin, stdout)
@@ -79,6 +83,11 @@ where
     for line in stdin.lines() {
         let line = line.map_err(io_err)?;
         if line.trim().is_empty() {
+            continue;
+        }
+        if line.len() > MAX_JSONL_LINE {
+            writeln!(stdout, "{}", json_error("line too long")).map_err(io_err)?;
+            stdout.flush().map_err(io_err)?;
             continue;
         }
         match handle(punct, &line) {
@@ -100,7 +109,7 @@ fn handle(punct: &Punctuator, line: &str) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("text is empty".to_string());
     }
-    Ok(punct.restore_lossy(text))
+    punct.restore(text).map_err(|e| e.to_string())
 }
 
 fn json_text(text: &str) -> String {

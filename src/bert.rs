@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::config::Config;
 use crate::encoder::BertLayer;
 use crate::error::{Error, Result};
-use crate::labels::load_id2label;
+use crate::labels::lower_o_index;
 use crate::layer_norm::LayerNorm;
 use crate::linear::Linear;
 use crate::model::{CONFIG_FILE, MODEL_FILE};
@@ -77,6 +77,7 @@ pub(crate) struct BertForTokenClassification {
     layers: Vec<BertLayer>,
     classifier: Linear,
     id2label: Vec<String>,
+    default_label: usize,
     max_position_embeddings: usize,
 }
 
@@ -104,14 +105,31 @@ impl BertForTokenClassification {
                 config.num_labels
             )));
         }
-        let id2label = load_id2label(&config_path)?;
+        if config.id2label.is_empty() {
+            return Err(Error::config(format!(
+                "{CONFIG_FILE} missing id2label object"
+            )));
+        }
+        if config.id2label.len() != config.num_labels {
+            return Err(Error::config(format!(
+                "id2label len {} != num_labels {}",
+                config.id2label.len(),
+                config.num_labels
+            )));
+        }
+        let default_label = lower_o_index(&config.id2label)?;
         Ok(Self {
             embeddings,
             layers,
             classifier,
-            id2label,
+            id2label: config.id2label,
+            default_label,
             max_position_embeddings: config.max_position_embeddings,
         })
+    }
+
+    pub(crate) fn default_label(&self) -> usize {
+        self.default_label
     }
 
     pub(crate) fn forward(

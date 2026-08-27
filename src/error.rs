@@ -42,8 +42,6 @@ impl Error {
 pub(crate) enum TensorError {
     #[error("shape error: {0}")]
     Shape(String),
-    #[error("device error: {0}")]
-    Device(String),
     #[error("{0}")]
     Msg(String),
 }

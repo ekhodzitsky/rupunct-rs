@@ -1,6 +1,5 @@
 //! Safetensors helpers shared by BERT load.
 
-use crate::device::Device;
 use crate::error::{Error, Result};
 use crate::layer_norm::LayerNorm;
 use crate::linear::Linear;
@@ -58,7 +57,7 @@ pub(crate) fn gather_rows(table: &Tensor, ids: &[u32]) -> Result<Tensor> {
         }
         out[i * h..(i + 1) * h].copy_from_slice(&src[id * h..(id + 1) * h]);
     }
-    Ok(Tensor::from_vec(out, vec![ids.len(), h], Device::Cpu)?)
+    Ok(Tensor::from_vec(out, vec![ids.len(), h])?)
 }
 
 pub(crate) fn add_inplace(dst: &mut [f32], src: &[f32]) {

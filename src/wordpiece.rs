@@ -12,7 +12,10 @@ use crate::error::{Error, Result};
 use crate::tokenizer_json::{
     Normalizer, TokenizerFile, parse_normalizer, parse_post_processor, parse_pre_tokenizer,
 };
-use crate::unicode::{bert_pre_tokenize, is_chinese_char, is_control};
+use crate::unicode::bert_pre_tokenize;
+
+mod scan;
+use scan::{AddedToken, Span};
 
 pub(crate) struct Tokenizer {
     vocab: HashMap<String, u32>,
@@ -44,13 +47,6 @@ impl Encoding {
     pub(crate) fn get_word_ids(&self) -> &[Option<u32>] {
         &self.word_ids
     }
-}
-
-struct AddedToken {
-    id: u32,
-    content: String,
-    lstrip: bool,
-    rstrip: bool,
 }
 
 impl Tokenizer {
@@ -154,51 +150,9 @@ impl Tokenizer {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn encode(&self, text: &str, add_special_tokens: bool) -> Encoding {
-        let mut ids: Vec<u32> = Vec::new();
-        let mut word_ids: Vec<Option<u32>> = Vec::new();
-
-        if add_special_tokens && let Some(cls) = self.cls {
-            ids.push(cls);
-            word_ids.push(None);
-        }
-
-        let mut next_word: u32 = 0;
-        for span in self.extract_added(text) {
-            match span {
-                Span::Added(idx) => {
-                    ids.push(self.added_tokens[idx].id);
-                    word_ids.push(Some(next_word));
-                    next_word += 1;
-                }
-                Span::Text(slice) => {
-                    let normalized = self.normalize(slice);
-                    let words = if self.bert_pre_tokenizer {
-                        bert_pre_tokenize(&normalized)
-                    } else if normalized.is_empty() {
-                        Vec::new()
-                    } else {
-                        vec![normalized.as_str()]
-                    };
-                    for word in words {
-                        self.tokenize_word(word, &mut ids);
-                        word_ids.resize(ids.len(), Some(next_word));
-                        next_word += 1;
-                    }
-                }
-            }
-        }
-
-        if add_special_tokens && let Some(sep) = self.sep {
-            ids.push(sep);
-            word_ids.push(None);
-        }
-
-        Encoding {
-            attention_mask: vec![1; ids.len()],
-            ids,
-            word_ids,
-        }
+        self.encode_words(&self.split_words(text), add_special_tokens)
     }
 
     /// Surface words after added-token extraction, normalization, and pre-tokenization.
@@ -232,7 +186,7 @@ impl Tokenizer {
         }
 
         for (i, word) in words.iter().enumerate() {
-            self.tokenize_word(word, &mut ids);
+            self.push_word(word, &mut ids);
             word_ids.resize(ids.len(), Some(i as u32));
         }
 
@@ -241,157 +195,25 @@ impl Tokenizer {
             word_ids.push(None);
         }
 
-        let attention_mask = vec![1; ids.len()];
         Encoding {
+            attention_mask: vec![1; ids.len()],
             ids,
-            attention_mask,
             word_ids,
         }
     }
 
-    fn normalize(&self, text: &str) -> String {
-        let (clean_text, handle_chinese_chars) = match &self.normalizer {
-            Normalizer::None => return text.to_string(),
-            Normalizer::Bert {
-                clean_text,
-                handle_chinese_chars,
-            } => (*clean_text, *handle_chinese_chars),
-        };
-
-        let mut out = String::with_capacity(text.len());
-        for c in text.chars() {
-            if clean_text {
-                if c == '\0' || c == '\u{FFFD}' || is_control(c) {
-                    continue;
-                }
-                out.push(if c.is_whitespace() { ' ' } else { c });
-            } else {
-                out.push(c);
-            }
-        }
-        if handle_chinese_chars {
-            let mut spaced = String::with_capacity(out.len());
-            for c in out.chars() {
-                if is_chinese_char(c) {
-                    spaced.push(' ');
-                    spaced.push(c);
-                    spaced.push(' ');
-                } else {
-                    spaced.push(c);
-                }
-            }
-            out = spaced;
-        }
-        out
+    pub(crate) fn word_token_count(&self, word: &str) -> usize {
+        let mut ids = Vec::new();
+        self.push_word(word, &mut ids);
+        ids.len().max(1)
     }
 
-    fn tokenize_word(&self, word: &str, out: &mut Vec<u32>) {
-        if word.chars().count() > self.max_input_chars_per_word {
-            out.push(self.unk_id);
-            return;
+    pub(crate) fn special_token_count(&self, add_special_tokens: bool) -> usize {
+        if !add_special_tokens {
+            return 0;
         }
-
-        let mut start = 0;
-        let mut is_bad = false;
-        let checkpoint = out.len();
-        while start < word.len() {
-            let mut end = word.len();
-            let mut found = None;
-            while start < end {
-                let substr = &word[start..end];
-                let id = if start > 0 {
-                    let mut candidate =
-                        String::with_capacity(self.continuing_subword_prefix.len() + substr.len());
-                    candidate.push_str(&self.continuing_subword_prefix);
-                    candidate.push_str(substr);
-                    self.vocab.get(candidate.as_str()).copied()
-                } else {
-                    self.vocab.get(substr).copied()
-                };
-                if let Some(id) = id {
-                    found = Some(id);
-                    break;
-                }
-                end -= substr.chars().last().map_or(1, |c| c.len_utf8());
-            }
-            let Some(id) = found else {
-                is_bad = true;
-                break;
-            };
-            out.push(id);
-            start = end;
-        }
-
-        if is_bad {
-            out.truncate(checkpoint);
-            out.push(self.unk_id);
-        }
+        usize::from(self.cls.is_some()) + usize::from(self.sep.is_some())
     }
-
-    fn extract_added<'a>(&self, text: &'a str) -> Vec<Span<'a>> {
-        let mut spans = Vec::new();
-        if self.added_tokens.is_empty() {
-            if !text.is_empty() {
-                spans.push(Span::Text(text));
-            }
-            return spans;
-        }
-
-        let mut span_start = 0;
-        let mut pos = 0;
-        while pos < text.len() {
-            let mut best: Option<usize> = None;
-            for (i, token) in self.added_tokens.iter().enumerate() {
-                if text[pos..].starts_with(token.content.as_str()) {
-                    match best {
-                        Some(b) if self.added_tokens[b].content.len() >= token.content.len() => {}
-                        _ => best = Some(i),
-                    }
-                }
-            }
-            let Some(idx) = best else {
-                pos += text[pos..].chars().next().map_or(1, |c| c.len_utf8());
-                continue;
-            };
-
-            let token = &self.added_tokens[idx];
-            let mut start = pos;
-            let mut stop = pos + token.content.len();
-            if token.lstrip {
-                while start > span_start {
-                    let prev = text[..start].chars().next_back();
-                    match prev {
-                        Some(c) if c.is_whitespace() => start -= c.len_utf8(),
-                        _ => break,
-                    }
-                }
-            }
-            if token.rstrip {
-                while let Some(c) = text[stop..].chars().next() {
-                    if !c.is_whitespace() {
-                        break;
-                    }
-                    stop += c.len_utf8();
-                }
-            }
-
-            if start > span_start {
-                spans.push(Span::Text(&text[span_start..start]));
-            }
-            spans.push(Span::Added(idx));
-            pos = stop;
-            span_start = stop;
-        }
-        if span_start < text.len() {
-            spans.push(Span::Text(&text[span_start..]));
-        }
-        spans
-    }
-}
-
-enum Span<'a> {
-    Text(&'a str),
-    Added(usize),
 }
 
 #[cfg(test)]

@@ -8,7 +8,6 @@ mod bert;
 mod blas;
 mod cli;
 mod config;
-mod device;
 mod encoder;
 mod error;
 mod gelu;

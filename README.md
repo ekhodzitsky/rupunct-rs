@@ -31,8 +31,9 @@ JSONL worker (stdin/stdout, one object per line):
 {"error":"text is empty"}
 ```
 
-Request-level failures are `{"error":"…"}` frames; the loop continues.
-Only a broken stdin/stdout aborts the worker.
+Request-level failures (bad JSON, empty `text`, restore error, oversized line)
+are `{"error":"…"}` frames; the loop continues. Only a broken stdin/stdout
+aborts the worker. `--text` prints the restored line or exits 2 on failure.
 
 Library:
 
@@ -44,8 +45,9 @@ let ru = p.restore("привет как дела")?;
 ```
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
-original string instead. Long inputs are split on word boundaries to fit
-`max_position_embeddings`.
+original string instead. Inputs longer than 512 WordPiece tokens (or the
+checkpoint `max_position_embeddings` if smaller) are split on word boundaries
+with a 64-token overlap.
 
 ## Weights
 

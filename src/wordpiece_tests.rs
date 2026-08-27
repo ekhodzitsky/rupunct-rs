@@ -352,3 +352,31 @@ fn test_added_token_lstrip_rstrip() {
     assert_eq!(enc.get_ids(), &[1, 9, 2]);
     assert_eq!(enc.get_word_ids(), &[Some(0), Some(1), Some(2)]);
 }
+
+#[test]
+fn encode_matches_split_words_then_encode_words() {
+    let json = r###"{
+        "version": "1.0", "truncation": null, "padding": null,
+        "added_tokens": [
+            {"id": 3, "content": "[SEP]", "single_word": false, "lstrip": false,
+             "rstrip": false, "normalized": false, "special": true}
+        ],
+        "normalizer": null, "pre_tokenizer": {"type": "BertPreTokenizer"},
+        "post_processor": null, "decoder": null,
+        "model": {"type": "WordPiece", "unk_token": "[UNK]",
+                  "continuing_subword_prefix": "##",
+                  "max_input_chars_per_word": 100,
+                  "vocab": {"[UNK]": 0, "a": 1, "b": 2, "[SEP]": 3}}
+    }"###;
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("tokenizer.json");
+    std::fs::write(&path, json).unwrap();
+    let tok = Tokenizer::from_file(&path).unwrap();
+    let text = "a[SEP]b";
+    let words = tok.split_words(text);
+    assert_eq!(words, ["a", "[SEP]", "b"]);
+    let via_words = tok.encode_words(&words, false);
+    let via_text = tok.encode(text, false);
+    assert_eq!(via_words.get_ids(), via_text.get_ids());
+    assert_eq!(via_words.get_ids(), &[1, 3, 2]);
+}

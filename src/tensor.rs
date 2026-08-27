@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use memmap2::Mmap;
 
-use crate::device::Device;
 use crate::error::{TensorError, TensorResult};
 use crate::matmul::matmul_f32_bt;
 use crate::shape::Shape;
@@ -26,15 +25,10 @@ enum F32Store {
 pub(crate) struct Tensor {
     shape: Shape,
     data: F32Store,
-    device: Device,
 }
 
 impl Tensor {
-    pub(crate) fn from_vec(
-        data: Vec<f32>,
-        shape: impl Into<Shape>,
-        device: Device,
-    ) -> TensorResult<Self> {
+    pub(crate) fn from_vec(data: Vec<f32>, shape: impl Into<Shape>) -> TensorResult<Self> {
         let shape = shape.into();
         let n = shape.elem_count()?;
         if data.len() != n {
@@ -44,13 +38,9 @@ impl Tensor {
                 shape
             )));
         }
-        if !device.is_cpu() {
-            return Err(TensorError::Device("only CPU supported".into()));
-        }
         Ok(Self {
             shape,
             data: F32Store::Heap(Arc::new(data)),
-            device,
         })
     }
 
@@ -59,7 +49,6 @@ impl Tensor {
         map: Arc<Mmap>,
         offset: usize,
         shape: impl Into<Shape>,
-        device: Device,
     ) -> TensorResult<Self> {
         let shape = shape.into();
         let nelem = shape.elem_count()?;
@@ -73,21 +62,17 @@ impl Tensor {
         {
             return Err(TensorError::shape("f32 mmap range OOB"));
         }
-        if !device.is_cpu() {
-            return Err(TensorError::Device("only CPU supported".into()));
-        }
         Ok(Self {
             shape,
             data: F32Store::Mmap { map, offset, nelem },
-            device,
         })
     }
 
     #[cfg(test)]
-    pub(crate) fn zeros(shape: impl Into<Shape>, device: Device) -> TensorResult<Self> {
+    pub(crate) fn zeros(shape: impl Into<Shape>) -> TensorResult<Self> {
         let shape = shape.into();
         let n = shape.elem_count()?;
-        Self::from_vec(vec![0.0; n], shape, device)
+        Self::from_vec(vec![0.0; n], shape)
     }
 
     #[cfg(test)]
@@ -105,10 +90,6 @@ impl Tensor {
 
     pub(crate) fn dim(&self, i: usize) -> TensorResult<usize> {
         self.shape.dim(i)
-    }
-
-    pub(crate) fn device(&self) -> Device {
-        self.device
     }
 
     pub(crate) fn elem_count(&self) -> usize {
@@ -165,7 +146,7 @@ impl Tensor {
         }
         let mut out = vec![0.0f32; m * n];
         crate::matmul::matmul_f32(m, k, n, self.as_slice(), rhs.as_slice(), &mut out)?;
-        Tensor::from_vec(out, vec![m, n], self.device)
+        Tensor::from_vec(out, vec![m, n])
     }
 
     /// `self [m,k] @ weight^T` where weight is `[n,k]` (Linear layout).
@@ -184,7 +165,7 @@ impl Tensor {
         }
         let mut out = vec![0.0f32; m * n];
         matmul_f32_bt(m, k, n, self.as_slice(), weight.as_slice(), &mut out)?;
-        Tensor::from_vec(out, vec![m, n], self.device)
+        Tensor::from_vec(out, vec![m, n])
     }
 
     /// Elementwise `self + other` (same shape).
@@ -211,11 +192,18 @@ impl Tensor {
             data.push(a[i] + b[i]);
             i += 1;
         }
-        Tensor::from_vec(data, self.shape.clone(), self.device)
+        Tensor::from_vec(data, self.shape.clone())
     }
 
     /// Broadcast-add a 1D bias `[n]` onto last dim of rank-2 `[m,n]`.
+    #[cfg(test)]
     pub(crate) fn add_bias_2d(&self, bias: &Tensor) -> TensorResult<Tensor> {
+        let mut out = self.clone();
+        out.add_bias_2d_inplace(bias)?;
+        Ok(out)
+    }
+
+    pub(crate) fn add_bias_2d_inplace(&mut self, bias: &Tensor) -> TensorResult<()> {
         if self.rank() != 2 {
             return Err(TensorError::shape("add_bias_2d requires rank-2 input"));
         }
@@ -230,14 +218,14 @@ impl Tensor {
                 bias.dim(0)?
             )));
         }
-        let mut data = self.as_slice().to_vec();
         let b = bias.as_slice();
+        let data = self.as_mut_slice();
         for i in 0..m {
             for j in 0..n {
                 data[i * n + j] += b[j];
             }
         }
-        Tensor::from_vec(data, self.shape.clone(), self.device)
+        Ok(())
     }
 
     /// Zero-copy reshape (shared storage) when element count matches.
@@ -257,7 +245,6 @@ impl Tensor {
         Ok(Self {
             shape,
             data: self.data.clone(),
-            device: self.device,
         })
     }
 }

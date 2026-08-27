@@ -79,6 +79,16 @@ fn jsonl_ready_and_frames() {
 }
 
 #[test]
+fn jsonl_rejects_oversized_line() {
+    let dir = tiny_dir();
+    let huge = "x".repeat(MAX_JSONL_LINE + 1);
+    let stdin = format!("{huge}\n");
+    let (r, out, _) = run_capture(&["--model-dir", dir.path().to_str().unwrap()], &stdin);
+    assert!(r.is_ok(), "{r:?}");
+    assert!(out.contains("line too long"), "{out}");
+}
+
+#[test]
 fn json_escapes_quotes() {
     assert!(json_text("a\"b").contains(r#"\"b"#) || json_text("a\"b").contains("\\\""));
     assert!(json_error("boom").contains("boom"));

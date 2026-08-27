@@ -34,7 +34,7 @@ impl Punctuator {
         self.restore(text).unwrap_or_else(|_| text.to_string())
     }
 
-    /// Restore each string independently. First failure aborts the batch.
+    /// Restore each string independently (no padded batch GEMM). First failure aborts.
     pub fn restore_batch(&self, texts: &[&str]) -> Result<Vec<String>> {
         texts.iter().map(|t| self.restore(t)).collect()
     }

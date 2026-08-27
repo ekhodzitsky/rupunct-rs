@@ -13,7 +13,14 @@ pub fn default_model_dir() -> PathBuf {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    home_dir_from(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
+}
+
+pub(crate) fn home_dir_from(
+    home: Option<std::ffi::OsString>,
+    userprofile: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    home.or(userprofile).map(PathBuf::from)
 }
 
 pub(crate) fn model_dir_from(env: Option<String>, home: Option<PathBuf>) -> PathBuf {

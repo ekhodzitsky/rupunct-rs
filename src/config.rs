@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::error::{Error, Result};
+use crate::labels::id2label_from_map;
 use crate::model::CONFIG_FILE;
 
 #[derive(Clone, Debug)]
@@ -14,6 +15,7 @@ pub(crate) struct Config {
     pub type_vocab_size: usize,
     pub layer_norm_eps: f32,
     pub num_labels: usize,
+    pub id2label: Vec<String>,
 }
 
 impl Config {
@@ -28,12 +30,28 @@ impl Config {
                 "hidden_size {hidden} not divisible by num_attention_heads {heads}"
             )));
         }
-        let num_labels = json_usize(&v, "num_labels").unwrap_or_else(|_| {
-            v.get("id2label")
-                .and_then(|m| m.as_object())
-                .map(|m| m.len())
-                .unwrap_or(33)
-        });
+        if let Some(act) = v.get("hidden_act").and_then(|x| x.as_str())
+            && act != "gelu"
+        {
+            return Err(Error::config(format!(
+                "unsupported hidden_act '{act}' (expected gelu)"
+            )));
+        }
+        let id2label = match v.get("id2label").and_then(|m| m.as_object()) {
+            Some(map) => id2label_from_map(map)?,
+            None => Vec::new(),
+        };
+        let num_labels = match json_usize(&v, "num_labels") {
+            Ok(n) => n,
+            Err(_) if !id2label.is_empty() => id2label.len(),
+            Err(e) => return Err(e),
+        };
+        if !id2label.is_empty() && id2label.len() != num_labels {
+            return Err(Error::config(format!(
+                "id2label len {} != num_labels {num_labels}",
+                id2label.len()
+            )));
+        }
         Ok(Self {
             vocab_size: json_usize(&v, "vocab_size")?,
             hidden_size: hidden,
@@ -44,6 +62,7 @@ impl Config {
             type_vocab_size: json_usize(&v, "type_vocab_size")?,
             layer_norm_eps: json_f64(&v, "layer_norm_eps")? as f32,
             num_labels,
+            id2label,
         })
     }
 
@@ -97,7 +116,31 @@ mod tests {
         .unwrap();
         let c = Config::from_json(&cfg).unwrap();
         assert_eq!(c.num_labels, 2);
+        assert_eq!(c.id2label, ["LOWER_O", "UPPER_O"]);
         assert_eq!(c.head_dim(), 2);
+    }
+
+    #[test]
+    fn config_rejects_missing_labels_and_bad_act() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = tmp.path().join(CONFIG_FILE);
+        std::fs::write(
+            &cfg,
+            r#"{"hidden_size": 4, "num_attention_heads": 2, "num_hidden_layers": 1,
+               "intermediate_size": 8, "vocab_size": 4, "max_position_embeddings": 8,
+               "type_vocab_size": 2, "layer_norm_eps": 1e-12}"#,
+        )
+        .unwrap();
+        assert!(Config::from_json(&cfg).is_err());
+        std::fs::write(
+            &cfg,
+            r#"{"hidden_size": 4, "num_attention_heads": 2, "num_hidden_layers": 1,
+               "intermediate_size": 8, "vocab_size": 4, "max_position_embeddings": 8,
+               "type_vocab_size": 2, "layer_norm_eps": 1e-12, "num_labels": 2,
+               "hidden_act": "relu"}"#,
+        )
+        .unwrap();
+        assert!(Config::from_json(&cfg).is_err());
     }
 
     #[test]

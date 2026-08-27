@@ -2,4 +2,7 @@
 **/*.rs.bk
 .DS_Store
 *.safetensors
+*.bin
+pytorch_model.bin
 /punct
+.kimi/

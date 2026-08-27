@@ -54,16 +54,23 @@ fn test_process_token_unknown_label_is_identity() {
 fn test_first_subword_labels_picks_first_subtoken() {
     let word_ids = vec![None, Some(0), Some(0), Some(1), None];
     let argmax = vec![0, 3, 9, 7, 0];
-    let labels = first_subword_labels(&word_ids, &argmax, 2);
+    let labels = first_subword_labels(&word_ids, &argmax, 2, 31);
     assert_eq!(labels, vec![3, 7]);
 }
 
 #[test]
-fn test_first_subword_labels_missing_word_defaults_zero() {
+fn test_first_subword_labels_missing_word_defaults_lower_o() {
     let word_ids = vec![None, Some(0), None];
     let argmax = vec![0, 5, 0];
-    let labels = first_subword_labels(&word_ids, &argmax, 2);
-    assert_eq!(labels, vec![5, 0]);
+    let labels = first_subword_labels(&word_ids, &argmax, 2, 31);
+    assert_eq!(labels, vec![5, 31]);
+}
+
+#[test]
+fn test_lower_o_index() {
+    let labels = vec!["UPPER_O".into(), "LOWER_O".into()];
+    assert_eq!(lower_o_index(&labels).unwrap(), 1);
+    assert!(lower_o_index(&["UPPER_O".into()]).is_err());
 }
 
 #[test]

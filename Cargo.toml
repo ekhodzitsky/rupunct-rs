@@ -24,6 +24,7 @@ safetensors = "0.8"
 memmap2 = "0.9"
 rayon = "1"
 gemm = "0.19"
+libm = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -465,6 +465,7 @@ name = "rupunct"
 version = "0.2.0"
 dependencies = [
  "gemm",
+ "libm",
  "memmap2",
  "rayon",
  "safetensors",

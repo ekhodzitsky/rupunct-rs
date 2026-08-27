@@ -1,12 +1,16 @@
 //! Word-aligned restore with BERT windowing.
 
 use crate::bert::BertForTokenClassification;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::labels::{argmax, first_subword_labels, process_token};
 use crate::wordpiece::Tokenizer;
 
-/// Overlap words carried into the next window for left context.
-pub(crate) const WINDOW_OVERLAP_WORDS: usize = 8;
+/// On-device window cap in tokens (including specials). The checkpoint may
+/// allow more (`max_position_embeddings`); 512 keeps attention cheap.
+pub(crate) const DEFAULT_WINDOW_TOKENS: usize = 512;
+
+/// Left-context overlap in tokens carried into the next window.
+pub(crate) const WINDOW_OVERLAP_TOKENS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Window {
@@ -25,20 +29,17 @@ pub(crate) fn restore(
         return Ok(text.to_string());
     }
     let max_pos = model.max_position_embeddings().max(2);
-    let windows = pack_windows(tokenizer, &words, max_pos, WINDOW_OVERLAP_WORDS);
-    let single = windows.len() == 1;
+    let window = max_pos.clamp(2, DEFAULT_WINDOW_TOKENS);
+    let windows = pack_windows(tokenizer, &words, window, WINDOW_OVERLAP_TOKENS);
+    let default_lid = model.default_label();
     let mut labels = Vec::with_capacity(words.len());
     for w in &windows {
         let slice = &words[w.start..w.end];
-        let encoding = if single {
-            tokenizer.encode(text, true)
-        } else {
-            tokenizer.encode_words(slice, true)
-        };
+        let encoding = tokenizer.encode_words(slice, true);
         let mut ids = encoding.get_ids().to_vec();
         let mut mask = encoding.get_attention_mask().to_vec();
         let mut word_ids = encoding.get_word_ids().to_vec();
-        fit_seq(&mut ids, &mut mask, &mut word_ids, max_pos);
+        fit_seq(&mut ids, &mut mask, &mut word_ids, window);
         let token_type_ids = vec![0u32; ids.len()];
         let logits = model.forward(&ids, &token_type_ids, &mask)?;
         let seq = logits.dim(0)?;
@@ -47,8 +48,17 @@ pub(crate) fn restore(
         let argmax_per_token: Vec<usize> = (0..seq)
             .map(|t| argmax(&flat[t * nlab..(t + 1) * nlab]))
             .collect();
-        let window_labels = first_subword_labels(&word_ids, &argmax_per_token, slice.len());
+        let window_labels =
+            first_subword_labels(&word_ids, &argmax_per_token, slice.len(), default_lid);
         labels.extend(window_labels.into_iter().skip(w.skip));
+    }
+
+    if labels.len() != words.len() {
+        return Err(Error::model(format!(
+            "label count {} != word count {}",
+            labels.len(),
+            words.len()
+        )));
     }
 
     let mut out = String::new();
@@ -71,29 +81,40 @@ pub(crate) fn pack_windows(
     tokenizer: &Tokenizer,
     words: &[String],
     max_pos: usize,
-    overlap: usize,
+    overlap_tokens: usize,
 ) -> Vec<Window> {
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let specials = tokenizer.special_token_count(true);
+    let counts: Vec<usize> = words
+        .iter()
+        .map(|w| tokenizer.word_token_count(w))
+        .collect();
     let mut windows = Vec::new();
     let mut committed = 0usize;
     while committed < words.len() {
-        let mut start = committed.saturating_sub(overlap);
-        while start < committed
-            && tokenizer
-                .encode_words(&words[start..=committed], true)
-                .get_ids()
-                .len()
-                > max_pos
-        {
+        let mut start = committed;
+        let mut overlap_used = 0usize;
+        while start > 0 && overlap_used < overlap_tokens {
+            start -= 1;
+            overlap_used += counts[start];
+        }
+        let mut toks = specials;
+        for &c in &counts[start..committed] {
+            toks = toks.saturating_add(c);
+        }
+        while start < committed && toks > max_pos {
+            toks = toks.saturating_sub(counts[start]);
             start += 1;
         }
-        let mut end = (committed + 1).min(words.len());
-        while end < words.len()
-            && tokenizer
-                .encode_words(&words[start..=end], true)
-                .get_ids()
-                .len()
-                <= max_pos
-        {
+        let mut end = committed;
+        while end < words.len() {
+            let next = counts[end];
+            if toks > max_pos || toks + next > max_pos {
+                break;
+            }
+            toks += next;
             end += 1;
         }
         if end <= committed {

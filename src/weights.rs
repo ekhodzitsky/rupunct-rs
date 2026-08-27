@@ -8,7 +8,6 @@ use memmap2::Mmap;
 use safetensors::Dtype as StDtype;
 use safetensors::tensor::SafeTensors;
 
-use crate::device::Device;
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 
@@ -44,6 +43,13 @@ pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
             .tensor(name)
             .map_err(|e| TensorError::msg(format!("tensor {name}: {e}")))?;
         if view.dtype() != StDtype::F32 {
+            let weight_like = name.ends_with(".weight") || name.ends_with(".bias");
+            if weight_like {
+                return Err(TensorError::msg(format!(
+                    "{name}: unsupported dtype {:?} (F32 required)",
+                    view.dtype()
+                )));
+            }
             continue;
         }
         let shape: Vec<usize> = view.shape().to_vec();
@@ -57,13 +63,13 @@ pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
         let nelem = raw.len() / 4;
         let offset = (raw.as_ptr() as usize).wrapping_sub(base);
         let t = if offset.is_multiple_of(4) && offset + raw.len() <= bytes.len() && nelem >= 1024 {
-            Tensor::from_mmap_f32(Arc::clone(&map), offset, shape, Device::Cpu)?
+            Tensor::from_mmap_f32(Arc::clone(&map), offset, shape)?
         } else {
             let mut vals = Vec::with_capacity(nelem);
             for chunk in raw.chunks_exact(4) {
                 vals.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
             }
-            Tensor::from_vec(vals, shape, Device::Cpu)?
+            Tensor::from_vec(vals, shape)?
         };
         out.f32.insert((*name).to_string(), t);
     }

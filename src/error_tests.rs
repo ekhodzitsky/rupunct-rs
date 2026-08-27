@@ -43,6 +43,4 @@ fn tensor_error_maps_to_model() {
     assert_eq!(err, Error::Model("shape error: rank".to_string()));
     let err = Error::from(TensorError::msg("mmap"));
     assert_eq!(err, Error::Model("mmap".to_string()));
-    let err = Error::from(TensorError::Device("gpu".into()));
-    assert_eq!(err, Error::Model("device error: gpu".to_string()));
 }

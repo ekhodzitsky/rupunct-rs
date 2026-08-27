@@ -5,6 +5,42 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- JSONL worker rejects frames larger than 1 MiB (`line too long`) instead of
+  buffering an unbounded line.
+- `scripts/fetch-model.sh` pins `RUPunct/RUPunct_small` by commit SHA and
+  prefers the `hf` CLI when present.
+
+### Changed
+
+- `--text` and the JSONL worker call `restore` (not `restore_lossy`). Inference
+  failures are errors (`exit 2` / `{"error":…}`), matching the documented
+  protocol.
+- Long inputs are packed by **token** budget: windows cap at 512 tokens (or
+  `max_position_embeddings` if smaller) with a 64-token overlap. Packing uses
+  per-word subword counts instead of re-encoding on every expansion.
+- Missing-word labels default to `LOWER_O`, not index 0 (`UPPER_PERIOD`).
+- `encode` is `split_words` + `encode_words`, so added tokens stay whole words
+  in every window.
+- CJK spacing range matches HuggingFace `is_chinese_char` (`U+2B820`).
+- BERT GELU uses `libm::erff` (same erf form as PyTorch).
+- Default model dir falls back to `%USERPROFILE%` when `HOME` is unset.
+- Non-F32 `.weight` / `.bias` tensors fail at load. Extra I64 tensors such as
+  `position_ids` are still skipped.
+- `config.json` no longer invents `num_labels = 33`. Missing labels is an error.
+  Unsupported `hidden_act` (not `gelu`) is rejected.
+- Attention key mask uses `-1e9` (HuggingFace-scale) instead of `-1e4`.
+
+### Removed
+
+- Stub `Device` enum (CPU is the only backend).
+
+### Fixed
+
+- `torch.load` in `fetch-model.sh` uses `weights_only=True`.
+- `.gitignore` covers `*.bin` / `pytorch_model.bin`, not only `*.safetensors`.
+
 ## [0.2.0] - 2026-08-27
 
 ### Added

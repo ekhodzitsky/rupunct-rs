@@ -24,14 +24,18 @@ JSONL (stdin/stdout, one object per line):
 ```
 
 Request-level failures are `{"error": "…"}` frames; the loop continues.
-Only broken stdin/stdout aborts the worker.
+Only broken stdin/stdout aborts the worker. `--text` uses `restore` (exit 2
+on inference failure). JSONL frames larger than 1 MiB are rejected.
 
 `--text` is one-shot. Omit it for the JSONL worker. Weights:
 `model.safetensors` + `tokenizer.json` + `config.json`.
-`RUPUNCT_MODEL` overrides the default `~/.rupunct/punct`.
+`RUPUNCT_MODEL` overrides the default `~/.rupunct/punct` (`USERPROFILE` on
+Windows if `HOME` is unset).
 
-Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` after converting
-`pytorch_model.bin` to safetensors (`scripts/fetch-model.sh`).
+Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` at the SHA pinned
+in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
+
+Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap.
 
 ## Forbidden
 

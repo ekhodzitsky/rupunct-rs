@@ -1,7 +1,6 @@
 //! BERT encoder layer: self-attention + feed-forward.
 
 use crate::config::Config;
-use crate::device::Device;
 use crate::error::Result;
 use crate::gelu::gelu_tensor;
 use crate::layer_norm::LayerNorm;
@@ -96,7 +95,7 @@ impl Attention {
             }
         }
 
-        let attn = Tensor::from_vec(context, vec![seq, self.hidden], Device::Cpu)?;
+        let attn = Tensor::from_vec(context, vec![seq, self.hidden])?;
         let attn = self.dense.forward(&attn)?;
         let residual = hidden_states.add(&attn)?;
         Ok(self.layer_norm.forward(&residual)?)
@@ -107,7 +106,7 @@ pub(crate) fn mask_keys(scores: &mut [f32], seq: usize, attention_mask: &[u32]) 
     for s in 0..seq {
         if attention_mask.get(s).copied().unwrap_or(0) == 0 {
             for t in 0..seq {
-                scores[t * seq + s] += -1.0e4;
+                scores[t * seq + s] += -1.0e9;
             }
         }
     }
@@ -126,9 +125,11 @@ pub(crate) fn softmax_rows(scores: &mut [f32], seq: usize) {
             scores[row_start + s] = e;
             sum += e;
         }
-        let inv = 1.0 / sum;
-        for s in 0..seq {
-            scores[row_start + s] *= inv;
+        if sum > 0.0 {
+            let inv = 1.0 / sum;
+            for s in 0..seq {
+                scores[row_start + s] *= inv;
+            }
         }
     }
 }

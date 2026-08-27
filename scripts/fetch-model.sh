@@ -1,20 +1,31 @@
 #!/bin/sh
-# Install a RUPunct_small checkpoint into $RUPUNCT_MODEL or ~/.rupunct/punct.
-# Needs huggingface-cli. Conversion of pytorch_model.bin needs Python with
-# torch + safetensors.
+# Install a pinned RUPunct_small checkpoint into $RUPUNCT_MODEL or ~/.rupunct/punct.
+# Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
+# with torch + safetensors.
 set -eu
 
+# Pin: RUPunct/RUPunct_small @ 2024-05-01 (config hidden=312, max_pos=2048).
+REVISION="${RUPUNCT_REVISION:-97aa9196b313e931424a5401fa42bc69dd15acd9}"
 DEST="${RUPUNCT_MODEL:-${HOME:?HOME unset}/.rupunct/punct}"
 mkdir -p "$DEST"
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-  echo "fetch-model: huggingface-cli not on PATH" >&2
+HF_BIN=""
+if command -v hf >/dev/null 2>&1; then
+  HF_BIN=hf
+elif command -v huggingface-cli >/dev/null 2>&1; then
+  HF_BIN=huggingface-cli
+else
+  echo "fetch-model: hf / huggingface-cli not on PATH" >&2
   echo "  pip install -U huggingface_hub" >&2
-  echo "  then: huggingface-cli download RUPunct/RUPunct_small --local-dir $DEST" >&2
+  echo "  then: hf download RUPunct/RUPunct_small --revision $REVISION --local-dir $DEST" >&2
   exit 1
 fi
 
-huggingface-cli download RUPunct/RUPunct_small --local-dir "$DEST"
+if [ "$HF_BIN" = hf ]; then
+  hf download RUPunct/RUPunct_small --revision "$REVISION" --local-dir "$DEST"
+else
+  huggingface-cli download RUPunct/RUPunct_small --revision "$REVISION" --local-dir "$DEST"
+fi
 
 if [ ! -f "$DEST/model.safetensors" ] && [ -f "$DEST/pytorch_model.bin" ]; then
   if ! command -v python3 >/dev/null 2>&1; then
@@ -33,7 +44,7 @@ try:
     from safetensors.torch import save_file
 except ImportError as e:
     raise SystemExit(f"need torch and safetensors: {e}") from e
-state = torch.load(src, map_location="cpu")
+state = torch.load(src, map_location="cpu", weights_only=True)
 if isinstance(state, dict) and "state_dict" in state:
     state = state["state_dict"]
 tensors = {k: v.contiguous().cpu() for k, v in state.items()}
@@ -48,4 +59,4 @@ for f in model.safetensors tokenizer.json config.json; do
     exit 1
   fi
 done
-echo "ok $DEST"
+echo "ok $DEST (revision $REVISION)"
