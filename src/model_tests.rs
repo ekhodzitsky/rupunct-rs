@@ -1,0 +1,45 @@
+use super::*;
+use std::path::PathBuf;
+
+#[test]
+fn env_override_wins() {
+    let dir = model_dir_from(
+        Some("  /opt/punct  ".into()),
+        Some(PathBuf::from("/home/user")),
+    );
+    assert_eq!(dir, PathBuf::from("/opt/punct"));
+}
+
+#[test]
+fn blank_env_falls_back_to_home() {
+    let dir = model_dir_from(Some("  ".into()), Some(PathBuf::from("/home/user")));
+    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/punct"));
+}
+
+#[test]
+fn missing_env_uses_home() {
+    let dir = model_dir_from(None, Some(PathBuf::from("/home/user")));
+    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/punct"));
+}
+
+#[test]
+fn no_home_uses_relative_punct() {
+    assert_eq!(model_dir_from(None, None), PathBuf::from("punct"));
+    assert_eq!(
+        model_dir_from(Some(String::new()), None),
+        PathBuf::from("punct")
+    );
+}
+
+#[test]
+fn file_name_constants() {
+    assert_eq!(MODEL_FILE, "model.safetensors");
+    assert_eq!(TOKENIZER_FILE, "tokenizer.json");
+    assert_eq!(CONFIG_FILE, "config.json");
+}
+
+#[test]
+fn default_model_dir_is_absolute_or_punct() {
+    let dir = default_model_dir();
+    assert!(dir.ends_with("punct") || dir.as_os_str() == "punct" || dir.is_absolute());
+}

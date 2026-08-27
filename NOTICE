@@ -1,8 +1,9 @@
-rupunct-rs
-==========
+rupunct
+=======
 
-Punctuation restore (process_token, WordPiece, RUPunct BERT) ported from
-gigastt-pro (MIT, Evgeny Khodzitsky).
+Copyright (c) 2026 Evgeny Khodzitsky
 
-Weights: RUPunct/RUPunct_small (MIT) — not shipped in this repository.
-Check the Hugging Face model card before commercial use.
+Engine: MIT (this repository).
+
+Checkpoint: compatible with RUPunct/RUPunct_small (MIT). Weights are not
+shipped in this repository. Confirm the model card before commercial use.

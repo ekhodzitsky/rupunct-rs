@@ -1,23 +1,19 @@
-use crate::error::{Result, TensorError};
+use crate::error::{TensorError, TensorResult};
 
 /// Tensor shape (row-major logical dims).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shape(pub Vec<usize>);
+pub(crate) struct Shape(pub Vec<usize>);
 
 impl Shape {
-    pub fn new(dims: impl Into<Vec<usize>>) -> Self {
-        Self(dims.into())
-    }
-
-    pub fn dims(&self) -> &[usize] {
+    pub(crate) fn dims(&self) -> &[usize] {
         &self.0
     }
 
-    pub fn rank(&self) -> usize {
+    pub(crate) fn rank(&self) -> usize {
         self.0.len()
     }
 
-    pub fn elem_count(&self) -> Result<usize> {
+    pub(crate) fn elem_count(&self) -> TensorResult<usize> {
         if self.0.is_empty() {
             return Ok(1);
         }
@@ -27,22 +23,11 @@ impl Shape {
         })
     }
 
-    pub fn dim(&self, i: usize) -> Result<usize> {
+    pub(crate) fn dim(&self, i: usize) -> TensorResult<usize> {
         self.0
             .get(i)
             .copied()
             .ok_or_else(|| TensorError::shape(format!("dim {i} out of rank {}", self.rank())))
-    }
-
-    /// Index from the end (`0` = last dim).
-    pub fn dim_back(&self, from_end: usize) -> Result<usize> {
-        let r = self.rank();
-        if from_end >= r {
-            return Err(TensorError::shape(format!(
-                "dim_back {from_end} out of rank {r}"
-            )));
-        }
-        Ok(self.0[r - 1 - from_end])
     }
 }
 
@@ -62,5 +47,28 @@ impl std::fmt::Display for Shape {
             write!(f, "{d}")?;
         }
         write!(f, "]")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_shape_is_scalar() {
+        let s = Shape::from(vec![]);
+        assert_eq!(s.rank(), 0);
+        assert_eq!(s.elem_count().unwrap(), 1);
+        assert_eq!(s.to_string(), "[]");
+    }
+
+    #[test]
+    fn overflow_and_oob_dim() {
+        let s = Shape::from(vec![usize::MAX, 2]);
+        assert!(s.elem_count().is_err());
+        let s = Shape::from(vec![2, 3]);
+        assert_eq!(s.dim(1).unwrap(), 3);
+        assert!(s.dim(2).is_err());
+        assert_eq!(s.to_string(), "[2, 3]");
     }
 }

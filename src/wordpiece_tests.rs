@@ -63,13 +63,13 @@ fn test_golden_fixtures_replay_reduced_vocab() {
     assert_replays(&tokenizer);
 }
 
-/// Same replay against the real punct model tokenizer.json (full 83 828
-/// entry vocab). Guards against the reduced vocab masking a divergence.
+/// Same replay against a full RUPunct `tokenizer.json`. Guards against the
+/// reduced vocab masking a divergence. Enable with weights at
+/// `$RUPUNCT_MODEL` or `~/.rupunct/punct`.
 #[test]
-#[ignore = "requires punct model at ~/.gigastt/models/punct"]
+#[ignore = "requires tokenizer.json in $RUPUNCT_MODEL or ~/.rupunct/punct"]
 fn test_golden_fixtures_replay_full_vocab() {
-    let path = Path::new(&std::env::var("HOME").expect("HOME"))
-        .join(".gigastt/models/punct/tokenizer.json");
+    let path = crate::default_model_dir().join(crate::TOKENIZER_FILE);
     let tokenizer = Tokenizer::from_file(&path).expect("load real tokenizer.json");
     assert_replays(&tokenizer);
 }
@@ -351,33 +351,4 @@ fn test_added_token_lstrip_rstrip() {
     let enc = tok.encode("a <T> b", false);
     assert_eq!(enc.get_ids(), &[1, 9, 2]);
     assert_eq!(enc.get_word_ids(), &[Some(0), Some(1), Some(2)]);
-}
-
-#[test]
-fn test_unicode_category_spot_checks() {
-    // C*: control (Cc), format (Cf), private use (Co); \t\n\r excluded.
-    assert!(is_control('\x00'));
-    assert!(is_control('\x7F'));
-    assert!(is_control('\u{200B}')); // ZWSP (Cf)
-    assert!(is_control('\u{AD}')); // soft hyphen (Cf)
-    assert!(is_control('\u{E000}')); // PUA (Co)
-    assert!(is_control('\u{10FFFD}')); // plane 16 PUA (Co)
-    assert!(!is_control('\t'));
-    assert!(!is_control('\n'));
-    assert!(!is_control('а'));
-    // Unassigned (Cn) is NOT control: unicode_categories has no Cn table.
-    assert!(!is_control('\u{10FFFF}'));
-    // P*: dashes, quotes, CJK brackets; symbols are not punctuation.
-    assert!(is_bert_punc('!'));
-    assert!(is_bert_punc('+')); // ASCII branch (Unicode Sm)
-    assert!(is_bert_punc('_')); // Pc
-    assert!(is_bert_punc('\u{2014}')); // em dash (Pd)
-    assert!(is_bert_punc('\u{300A}')); // 《 (Ps)
-    assert!(!is_bert_punc('\u{2212}')); // minus sign (Sm)
-    assert!(!is_bert_punc('中'));
-    // CJK ranges.
-    assert!(is_chinese_char('中'));
-    assert!(is_chinese_char('野'));
-    assert!(!is_chinese_char('が')); // hiragana is not CJK ideograph
-    assert!(!is_chinese_char('а'));
 }

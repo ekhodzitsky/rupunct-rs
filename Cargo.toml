@@ -1,20 +1,22 @@
 [package]
 name = "rupunct"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
 publish = false
-description = "On-device Russian punctuation and casing restoration (RUPunct BERT)."
+description = "On-device Russian punctuation and casing restoration."
 repository = "https://github.com/ekhodzitsky/rupunct-rs"
 authors = ["Evgeny Khodzitsky"]
+readme = "README.md"
+keywords = ["punctuation", "russian", "bert", "nlp"]
+categories = ["command-line-utilities", "text-processing"]
 
 [[bin]]
 name = "rupunct"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

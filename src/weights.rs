@@ -1,4 +1,4 @@
-//! F32 safetensors load (RUPunct weights are dense F32).
+//! F32 safetensors load.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -9,30 +9,30 @@ use safetensors::Dtype as StDtype;
 use safetensors::tensor::SafeTensors;
 
 use crate::device::Device;
-use crate::error::{Result, TensorError};
+use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 
 #[derive(Debug, Default)]
-pub struct WeightSet {
+pub(crate) struct WeightSet {
     pub f32: HashMap<String, Tensor>,
 }
 
 impl WeightSet {
-    pub fn get_f32(&self, name: &str) -> Option<&Tensor> {
+    pub(crate) fn get_f32(&self, name: &str) -> Option<&Tensor> {
         self.f32.get(name)
     }
 }
 
-fn open_mmap(path: &Path) -> Result<Arc<Mmap>> {
+fn open_mmap(path: &Path) -> TensorResult<Arc<Mmap>> {
     let file = std::fs::File::open(path)
         .map_err(|e| TensorError::msg(format!("open {}: {e}", path.display())))?;
-    // SAFETY: read-only mapping; file not truncated while mapped.
+    // SAFETY: read-only mapping; file is not truncated while mapped.
     let mmap = unsafe { Mmap::map(&file) }
         .map_err(|e| TensorError::msg(format!("mmap {}: {e}", path.display())))?;
     Ok(Arc::new(mmap))
 }
 
-pub fn load_safetensors_file(path: &Path) -> Result<WeightSet> {
+pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
     let map = open_mmap(path)?;
     let bytes: &[u8] = &map;
     let st = SafeTensors::deserialize(bytes)
@@ -69,3 +69,7 @@ pub fn load_safetensors_file(path: &Path) -> Result<WeightSet> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+#[path = "weights_tests.rs"]
+mod tests;

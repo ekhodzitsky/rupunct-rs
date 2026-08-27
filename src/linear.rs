@@ -1,20 +1,17 @@
-//! F32 linear layer: `y = x @ W^T + b`, weight layout `[out_dim, in_dim]`.
-//!
-//! Matches `candle_nn::Linear` contract used by decoder/joiner and aux models.
-//! Product encoder uses Q8 [`QLinear`] in this crate.
-
+#[cfg(test)]
 use crate::device::Device;
-use crate::error::{Result, TensorError};
+use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 
+/// F32 linear layer: `y = x @ W^T + b`, weight layout `[out_dim, in_dim]`.
 #[derive(Debug, Clone)]
-pub struct Linear {
-    weight: Tensor, // [out, in]
+pub(crate) struct Linear {
+    weight: Tensor,
     bias: Option<Tensor>,
 }
 
 impl Linear {
-    pub fn new(weight: Tensor, bias: Option<Tensor>) -> Result<Self> {
+    pub(crate) fn new(weight: Tensor, bias: Option<Tensor>) -> TensorResult<Self> {
         if weight.rank() != 2 {
             return Err(TensorError::shape("Linear weight must be rank-2 [out,in]"));
         }
@@ -30,13 +27,14 @@ impl Linear {
         Ok(Self { weight, bias })
     }
 
-    pub fn from_slices(
+    #[cfg(test)]
+    pub(crate) fn from_slices(
         out_dim: usize,
         in_dim: usize,
         weight: &[f32],
         bias: Option<&[f32]>,
         device: Device,
-    ) -> Result<Self> {
+    ) -> TensorResult<Self> {
         let w = Tensor::from_vec(weight.to_vec(), vec![out_dim, in_dim], device)?;
         let b = match bias {
             Some(b) => Some(Tensor::from_vec(b.to_vec(), vec![out_dim], device)?),
@@ -45,27 +43,19 @@ impl Linear {
         Self::new(w, b)
     }
 
-    pub fn out_dim(&self) -> usize {
-        self.weight.dim(0).unwrap_or(0)
+    pub(crate) fn out_dim(&self) -> usize {
+        self.weight.dims()[0]
     }
 
-    pub fn in_dim(&self) -> usize {
-        self.weight.dim(1).unwrap_or(0)
-    }
-
-    pub fn weight(&self) -> &Tensor {
-        &self.weight
-    }
-
-    pub fn bias(&self) -> Option<&Tensor> {
-        self.bias.as_ref()
+    pub(crate) fn in_dim(&self) -> usize {
+        self.weight.dims()[1]
     }
 
     /// `x` rank-2 `[batch, in]` → `[batch, out]`.
-    pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
+    pub(crate) fn forward(&self, x: &Tensor) -> TensorResult<Tensor> {
         if x.rank() != 2 {
             return Err(TensorError::shape(
-                "Linear::forward spike supports rank-2 [batch, in] only",
+                "Linear::forward supports rank-2 [batch, in] only",
             ));
         }
         let in_dim = self.in_dim();
@@ -89,13 +79,40 @@ mod tests {
 
     #[test]
     fn linear_identity_bias() {
-        // W = I_2, b = [1, -1]
         let layer =
             Linear::from_slices(2, 2, &[1.0, 0.0, 0.0, 1.0], Some(&[1.0, -1.0]), Device::Cpu)
                 .unwrap();
+        assert_eq!(layer.out_dim(), 2);
+        assert_eq!(layer.in_dim(), 2);
         let x = Tensor::from_vec(vec![3.0, 5.0], vec![1, 2], Device::Cpu).unwrap();
         let y = layer.forward(&x).unwrap();
         assert!((y.as_slice()[0] - 4.0).abs() < 1e-5);
         assert!((y.as_slice()[1] - 4.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn linear_no_bias() {
+        let layer = Linear::from_slices(1, 2, &[1.0, 1.0], None, Device::Cpu).unwrap();
+        let x = Tensor::from_vec(vec![2.0, 3.0], vec![1, 2], Device::Cpu).unwrap();
+        let y = layer.forward(&x).unwrap();
+        assert!((y.as_slice()[0] - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn linear_rejects_bad_shapes() {
+        let w = Tensor::from_vec(vec![1.0, 2.0], vec![2], Device::Cpu).unwrap();
+        assert!(Linear::new(w, None).is_err());
+        let w = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2], Device::Cpu).unwrap();
+        let b = Tensor::from_vec(vec![1.0], vec![1], Device::Cpu).unwrap();
+        assert!(Linear::new(w, Some(b)).is_err());
+    }
+
+    #[test]
+    fn forward_rejects_rank_and_in_dim() {
+        let layer = Linear::from_slices(2, 2, &[1.0, 0.0, 0.0, 1.0], None, Device::Cpu).unwrap();
+        let x = Tensor::from_vec(vec![1.0, 2.0], vec![2], Device::Cpu).unwrap();
+        assert!(layer.forward(&x).is_err());
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0], vec![1, 3], Device::Cpu).unwrap();
+        assert!(layer.forward(&x).is_err());
     }
 }

@@ -2,32 +2,37 @@
 
 On-device **Russian punctuation and casing** restoration. One binary. No cloud.
 
-Extracted from [gigastt-pro](https://github.com/ekhodzitsky/gigastt-pro): RUPunct BERT
-token-classification (`aggregation_strategy="first"`) plus the in-tree WordPiece
-tokenizer and F32 CPU runtime.
+Input is unpunctuated Russian text. Output is the same words with punctuation
+and capitalization restored. Inference is a local BERT token-classifier
+compatible with [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
+(`aggregation_strategy="first"`).
 
-Downstream **dnmt** (and TTS) consume the restored line. Weights stay off git.
+Weights stay off git. The engine never opens a network socket.
 
 ## Quick start
 
 ```sh
-# Weights: copy a converted RUPunct_small dir (same layout as gigastt-pro punct/)
+# Checkpoint layout (three files):
 #   model.safetensors  tokenizer.json  config.json
-# Default search: $RUPUNCT_MODEL, then ~/.rupunct/punct, then ~/.gigastt/models/punct
+# Default dir: $RUPUNCT_MODEL, else ~/.rupunct/punct
+scripts/fetch-model.sh
 
 cargo build --release
-./target/release/rupunct --text "забери спину пройди закрытый гард не теряй фрейм"
+./target/release/rupunct --text "привет меня зовут анна"
 ```
 
-JSONL worker (stdin/stdout, same shape as dnmt):
+JSONL worker (stdin/stdout, one object per line):
 
 ```text
 {"ready":true}
-{"text":"забери спину пройди закрытый гард"}
-{"text":"Забери спину, пройди закрытый гард."}
+{"text":"привет как дела"}
+{"text":"Привет, как дела?"}
 {"text":""}
 {"error":"text is empty"}
 ```
+
+Request-level failures are `{"error":"…"}` frames; the loop continues.
+Only a broken stdin/stdout aborts the worker.
 
 Library:
 
@@ -35,17 +40,25 @@ Library:
 use rupunct::{Punctuator, default_model_dir};
 
 let p = Punctuator::load(&default_model_dir())?;
-let ru = p.restore("привет как дела");
+let ru = p.restore("привет как дела")?;
 ```
+
+`restore` returns `Err` on inference failure. `restore_lossy` returns the
+original string instead. Long inputs are split on word boundaries to fit
+`max_position_embeddings`.
 
 ## Weights
 
-RUPunct_small (MIT) as used by gigastt-pro. Convert with
-`gigastt-pro/scripts/convert_rupunct_to_candle.py`, or reuse
-`~/.gigastt/models/punct` if you already run gigastt-pro.
+Download [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
+(MIT) and convert `pytorch_model.bin` → `model.safetensors`:
 
-Do not commit `*.safetensors`.
+```sh
+scripts/fetch-model.sh
+```
+
+Override the search path with `--model-dir` or `RUPUNCT_MODEL`. Do not commit
+`*.safetensors`.
 
 ## License
 
-MIT (engine). RUPunct weights: see the model card; confirm before commercial use.
+MIT (engine). Checkpoint: see the RUPunct model card before commercial use.
