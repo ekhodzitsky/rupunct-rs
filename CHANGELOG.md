@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- POSIX/GNU CLI: positional `TEXT`, `--text=`, `-m`/`--model-dir=`, `-f`/`--file`,
+  `--jsonl`, `--lossy`, `--max-seq`, `--overlap`, `--complete {bash,zsh,fish}`.
+- `--text -` / `--file -` / positional `-` read one-shot source from stdin.
+- JSONL responses echo an optional request `"id"`.
+- Public `RestoreOpts` and `Punctuator::restore_with`.
+
+### Changed
+
+- Exit status: `0` success, `1` load/restore failure, `2` usage error.
+  `--help` / `--version` write to stdout. A TTY with no input is usage, not
+  a hanging JSONL worker.
+- Dropped `thiserror`, `libm`, and `rayon`. `gemm` is a target dependency
+  only outside macOS (Apple Accelerate on macOS). GELU uses in-tree erf.
+  LayerNorm is sequential (no pointer-splitting rayon).
+
 ## [0.3.0] - 2026-08-27
 
 ### Added

@@ -1,18 +1,13 @@
+use std::fmt;
 use std::io;
 use std::path::Path;
 
-use thiserror::Error;
-
 /// Recoverable failure from load or restore.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    #[error("failed to read {path}: {kind}")]
     Io { path: String, kind: io::ErrorKind },
-    #[error("{0}")]
     Config(String),
-    #[error("{0}")]
     Tokenizer(String),
-    #[error("{0}")]
     Model(String),
 }
 
@@ -37,12 +32,21 @@ impl Error {
     }
 }
 
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { path, kind } => write!(f, "failed to read {path}: {kind}"),
+            Self::Config(msg) | Self::Tokenizer(msg) | Self::Model(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
 /// Tensor construction and op failures (internal).
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum TensorError {
-    #[error("shape error: {0}")]
     Shape(String),
-    #[error("{0}")]
     Msg(String),
 }
 
@@ -55,6 +59,17 @@ impl TensorError {
         Self::Msg(msg.into())
     }
 }
+
+impl fmt::Display for TensorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Shape(msg) => write!(f, "shape error: {msg}"),
+            Self::Msg(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl std::error::Error for TensorError {}
 
 impl From<TensorError> for Error {
     fn from(err: TensorError) -> Self {

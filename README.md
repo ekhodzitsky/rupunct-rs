@@ -19,35 +19,51 @@ scripts/fetch-model.sh
 
 cargo build --release
 ./target/release/rupunct --text "привет меня зовут анна"
+./target/release/rupunct "привет как дела"
+./target/release/rupunct --complete bash >> ~/.bash_completion
 ```
 
-JSONL worker (stdin/stdout, one object per line):
+A TTY with no input prints help and exits **2**. A pipe with no `--text` is
+the JSONL worker.
 
 ```text
 {"ready":true}
-{"text":"привет как дела"}
-{"text":"Привет, как дела?"}
+{"id":1,"text":"привет как дела"}
+{"id":1,"text":"Привет, как дела?"}
 {"text":""}
 {"error":"text is empty"}
 ```
 
 Request-level failures (bad JSON, empty `text`, restore error, oversized line)
-are `{"error":"…"}` frames; the loop continues. Only a broken stdin/stdout
-aborts the worker. `--text` prints the restored line or exits 2 on failure.
+are `{"error":"…"}` frames; the loop continues. Optional `"id"` is echoed on
+the response. Only a broken stdin/stdout aborts the worker.
+
+`--text` prints the restored line or exits **1** on load/restore failure.
+
+```
+  0  success
+  1  load or restore failure
+  2  usage error
+```
 
 Library:
 
 ```rust
-use rupunct::{Punctuator, default_model_dir};
+use rupunct::{Punctuator, RestoreOpts, default_model_dir};
 
 let p = Punctuator::load(&default_model_dir())?;
 let ru = p.restore("привет как дела")?;
+let ru = p.restore_with("привет как дела", RestoreOpts {
+    max_window_tokens: 256,
+    overlap_tokens: 32,
+})?;
 ```
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
 original string instead. Inputs longer than 512 WordPiece tokens (or the
 checkpoint `max_position_embeddings` if smaller) are split on word boundaries
-with a 64-token overlap.
+with a 64-token overlap. Override with `--max-seq` / `--overlap` or
+`RestoreOpts`.
 
 ## Weights
 
@@ -58,8 +74,8 @@ Download [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
 scripts/fetch-model.sh
 ```
 
-Override the search path with `--model-dir` or `RUPUNCT_MODEL`. Do not commit
-`*.safetensors`.
+Override the search path with `--model-dir` / `-m` or `RUPUNCT_MODEL`. Do not
+commit `*.safetensors`.
 
 ## License
 

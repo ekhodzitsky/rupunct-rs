@@ -12,6 +12,33 @@ pub(crate) const DEFAULT_WINDOW_TOKENS: usize = 512;
 /// Left-context overlap in tokens carried into the next window.
 pub(crate) const WINDOW_OVERLAP_TOKENS: usize = 64;
 
+/// Windowing knobs for [`crate::Punctuator::restore_with`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RestoreOpts {
+    /// BERT window in tokens, including `[CLS]` / `[SEP]`.
+    pub max_window_tokens: usize,
+    /// Tokens of left context carried into the next window.
+    pub overlap_tokens: usize,
+}
+
+impl Default for RestoreOpts {
+    fn default() -> Self {
+        Self {
+            max_window_tokens: DEFAULT_WINDOW_TOKENS,
+            overlap_tokens: WINDOW_OVERLAP_TOKENS,
+        }
+    }
+}
+
+impl RestoreOpts {
+    pub(crate) fn resolve(self, max_position_embeddings: usize) -> (usize, usize) {
+        let max_pos = max_position_embeddings.max(2);
+        let window = self.max_window_tokens.clamp(2, max_pos);
+        let overlap = self.overlap_tokens.min(window.saturating_sub(1));
+        (window, overlap)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Window {
     pub start: usize,
@@ -23,14 +50,14 @@ pub(crate) fn restore(
     model: &BertForTokenClassification,
     tokenizer: &Tokenizer,
     text: &str,
+    opts: RestoreOpts,
 ) -> Result<String> {
     let words = tokenizer.split_words(text);
     if words.is_empty() {
         return Ok(text.to_string());
     }
-    let max_pos = model.max_position_embeddings().max(2);
-    let window = max_pos.clamp(2, DEFAULT_WINDOW_TOKENS);
-    let windows = pack_windows(tokenizer, &words, window, WINDOW_OVERLAP_TOKENS);
+    let (window, overlap) = opts.resolve(model.max_position_embeddings());
+    let windows = pack_windows(tokenizer, &words, window, overlap);
     let default_lid = model.default_label();
     let mut labels = Vec::with_capacity(words.len());
     for w in &windows {

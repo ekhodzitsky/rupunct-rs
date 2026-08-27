@@ -106,54 +106,32 @@ pub fn gemm_row_x_col(
     #[cfg(not(target_os = "macos"))]
     {
         use gemm::{Parallelism, gemm};
-        use rayon::prelude::*;
-        let n_threads = rayon::current_num_threads().max(1);
-        let rows_per = m.div_ceil(n_threads).max(1);
-        let w_ptr = w_col.as_ptr() as usize;
-        let w_len = w_col.len();
-        let lhs_base = lhs.as_ptr() as usize;
-        let dst_base = dst.as_mut_ptr() as usize;
         let read_dst = beta != 0.0;
-        (0..n_threads).into_par_iter().for_each(|tid| {
-            let r0 = tid * rows_per;
-            if r0 >= m {
-                return;
-            }
-            let r1 = m.min(r0 + rows_per);
-            let rows = r1 - r0;
-            // SAFETY: row slabs are disjoint across `tid`; `lhs`/`w_col` are
-            // read-only for the parallel map; `dst` writes do not overlap.
-            let lhs_slab = unsafe {
-                std::slice::from_raw_parts((lhs_base as *const f32).add(r0 * k), rows * k)
-            };
-            let dst_slab = unsafe {
-                std::slice::from_raw_parts_mut((dst_base as *mut f32).add(r0 * n), rows * n)
-            };
-            let w_slab = unsafe { std::slice::from_raw_parts(w_ptr as *const f32, w_len) };
-            unsafe {
-                gemm(
-                    rows,
-                    n,
-                    k,
-                    dst_slab.as_mut_ptr(),
-                    1,
-                    n as isize,
-                    read_dst,
-                    lhs_slab.as_ptr(),
-                    1,
-                    k as isize,
-                    w_slab.as_ptr(),
-                    k as isize,
-                    1,
-                    beta,
-                    alpha,
-                    false,
-                    false,
-                    false,
-                    Parallelism::None,
-                );
-            }
-        });
+        // SAFETY: lengths checked; `dst` is uniquely borrowed. `w_col` is
+        // [n,k] row-major = k×n column-major (lda = k).
+        unsafe {
+            gemm(
+                m,
+                n,
+                k,
+                dst.as_mut_ptr(),
+                1,
+                n as isize,
+                read_dst,
+                lhs.as_ptr(),
+                1,
+                k as isize,
+                w_col.as_ptr(),
+                k as isize,
+                1,
+                beta,
+                alpha,
+                false,
+                false,
+                false,
+                Parallelism::Rayon(0),
+            );
+        }
     }
 }
 

@@ -37,6 +37,20 @@ fn pack_windows_splits_when_over_budget() {
 }
 
 #[test]
+fn restore_opts_resolve_clamps() {
+    let o = RestoreOpts {
+        max_window_tokens: 10_000,
+        overlap_tokens: 9_000,
+    };
+    assert_eq!(o.resolve(512), (512, 511));
+    let o = RestoreOpts {
+        max_window_tokens: 1,
+        overlap_tokens: 0,
+    };
+    assert_eq!(o.resolve(2048), (2, 0));
+}
+
+#[test]
 fn pack_windows_empty() {
     let (_tmp, tok) = tokenizer();
     assert!(pack_windows(&tok, &[], 8, 2).is_empty());

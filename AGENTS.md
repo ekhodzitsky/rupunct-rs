@@ -11,23 +11,25 @@ Output: the same words with punctuation and capitalization restored.
 scripts/fetch-model.sh
 cargo build --release
 rupunct --text "привет как дела"
-rupunct --model-dir ~/.rupunct/punct
+rupunct "привет как дела"
+rupunct -m ~/.rupunct/punct --jsonl
 ```
 
-JSONL (stdin/stdout, one object per line):
+JSONL (stdin/stdout, one object per line; default for pipes):
 
 ```text
 {"ready": true}
-→ {"text": "…"}
-← {"text": "…"}
-← {"error": "…"}
+→ {"text": "…"} / {"id":1,"text":"…"}
+← {"text": "…"} / {"id":1,"error":"…"}
 ```
 
 Request-level failures are `{"error": "…"}` frames; the loop continues.
-Only broken stdin/stdout aborts the worker. `--text` uses `restore` (exit 2
-on inference failure). JSONL frames larger than 1 MiB are rejected.
+Only broken stdin/stdout aborts the worker. A TTY with no input is a usage
+error (exit 2). `--text` uses `restore` (exit 1 on load/restore failure).
+JSONL frames larger than 1 MiB are rejected.
 
-`--text` is one-shot. Omit it for the JSONL worker. Weights:
+`--text` / `[TEXT]` / `--file` is one-shot. Pipes without those flags are
+the JSONL worker (`--jsonl` forces it). Weights:
 `model.safetensors` + `tokenizer.json` + `config.json`.
 `RUPUNCT_MODEL` overrides the default `~/.rupunct/punct` (`USERPROFILE` on
 Windows if `HOME` is unset).
@@ -35,7 +37,12 @@ Windows if `HOME` is unset).
 Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` at the SHA pinned
 in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 
-Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap.
+Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
+(`--max-seq` / `--overlap` / `RestoreOpts`).
+
+Direct crate deps stay tiny: serde/serde_json, safetensors, memmap2, and
+`gemm` only on non-macOS (Accelerate on macOS). No clap, thiserror, rayon,
+or libm.
 
 ## Forbidden
 

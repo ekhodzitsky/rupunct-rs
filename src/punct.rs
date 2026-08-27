@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::bert::BertForTokenClassification;
 use crate::error::Result;
 use crate::model::TOKENIZER_FILE;
-use crate::restore;
+use crate::restore::{self, RestoreOpts};
 use crate::wordpiece::Tokenizer;
 
 /// Punctuation and capitalization restorer.
@@ -22,11 +22,16 @@ impl Punctuator {
 
     /// Restore punctuation and casing. Empty / whitespace-only input is returned unchanged.
     pub fn restore(&self, text: &str) -> Result<String> {
+        self.restore_with(text, RestoreOpts::default())
+    }
+
+    /// [`restore`](Self::restore) with an explicit token window / overlap.
+    pub fn restore_with(&self, text: &str, opts: RestoreOpts) -> Result<String> {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return Ok(text.to_string());
         }
-        restore::restore(&self.model, &self.tokenizer, trimmed)
+        restore::restore(&self.model, &self.tokenizer, trimmed, opts)
     }
 
     /// Like [`restore`](Self::restore), but on inference failure returns `text` unchanged.

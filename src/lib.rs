@@ -33,6 +33,7 @@ pub use error::{Error, Result};
 pub use labels::process_token;
 pub use model::{CONFIG_FILE, MODEL_FILE, TOKENIZER_FILE, default_model_dir};
 pub use punct::Punctuator;
+pub use restore::RestoreOpts;
 
 /// Entry point used by the `rupunct` binary. Not part of the library contract.
 #[doc(hidden)]

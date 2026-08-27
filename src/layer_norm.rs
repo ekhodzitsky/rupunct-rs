@@ -1,7 +1,5 @@
 //! LayerNorm over the last dimension.
 
-use rayon::prelude::*;
-
 use crate::error::{TensorError, TensorResult};
 use crate::tensor::Tensor;
 
@@ -66,32 +64,9 @@ impl LayerNorm {
         let b = self.bias.as_slice();
         let eps = self.eps;
 
-        if outer >= 8 {
-            let out_ptr = out.as_mut_ptr() as usize;
-            let xs_ptr = xs.as_ptr() as usize;
-            let w_ptr = w.as_ptr() as usize;
-            let b_ptr = b.as_ptr() as usize;
-            (0..outer).into_par_iter().for_each(|o| {
-                // SAFETY: each `o` writes a disjoint `dim`-wide slab of `out`;
-                // `xs`/`w`/`b` are read-only for the duration of the parallel map.
-                let xs = unsafe { std::slice::from_raw_parts(xs_ptr as *const f32, outer * dim) };
-                let w = unsafe { std::slice::from_raw_parts(w_ptr as *const f32, dim) };
-                let b = unsafe { std::slice::from_raw_parts(b_ptr as *const f32, dim) };
-                let out =
-                    unsafe { std::slice::from_raw_parts_mut(out_ptr as *mut f32, outer * dim) };
-                ln_row(
-                    &xs[o * dim..(o + 1) * dim],
-                    w,
-                    b,
-                    eps,
-                    &mut out[o * dim..(o + 1) * dim],
-                );
-            });
-        } else {
-            for o in 0..outer {
-                let base = o * dim;
-                ln_row(&xs[base..base + dim], w, b, eps, &mut out[base..base + dim]);
-            }
+        for o in 0..outer {
+            let base = o * dim;
+            ln_row(&xs[base..base + dim], w, b, eps, &mut out[base..base + dim]);
         }
         Tensor::from_vec(out, x.dims().to_vec())
     }
