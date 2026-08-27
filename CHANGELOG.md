@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-27
+
 ### Added
 
 - JSONL worker rejects frames larger than 1 MiB (`line too long`) instead of
