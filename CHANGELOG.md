@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-27
+
 ### Added
 
 - POSIX/GNU CLI: positional `TEXT`, `--text=`, `-m`/`--model-dir=`, `-f`/`--file`,
