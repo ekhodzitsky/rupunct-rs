@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-28
+
+### Fixed
+
+- JSONL reads a capped buffer before allocating a line. Invalid UTF-8 is an
+  `{"error"}` frame; the worker keeps running. A trailing CR is stripped so
+  CRLF frames parse.
+- `--text` / `--file` / `--model-dir` reject a following flag as a value
+  (`--text=--help` still works). Repeated flags error. `--max-seq` must be ≥ 2.
+- Safetensors load rejects overlapping payloads. The mapped file handle is kept
+  alive (Windows).
+- Attention runs heads in-place on `[seq, hidden]` (no per-head Q/K/V copies).
+
+### Added
+
+- `Punctuator::restore_batch_with`. One-shot stdin/file bodies capped at 8 MiB.
+- `scripts/fetch-model.sh` verifies SHA-256 of `config.json`, `tokenizer.json`,
+  and `pytorch_model.bin` at the pinned revision.
+- CI job on macOS (Accelerate GEMM).
+
 ## [0.5.0] - 2026-08-28
 
 ### Changed

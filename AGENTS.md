@@ -26,7 +26,8 @@ JSONL (stdin/stdout, one object per line; default for pipes):
 Request-level failures are `{"error": "…"}` frames; the loop continues.
 Only broken stdin/stdout aborts the worker. A TTY with no input is a usage
 error (exit 2). `--text` uses `restore` (exit 1 on load/restore failure).
-JSONL frames larger than 1 MiB are rejected.
+JSONL frames larger than 1 MiB or invalid UTF-8 are `{"error"}` frames; the
+loop continues. One-shot `--file` / stdin bodies are capped at 8 MiB.
 
 `--text` / `[TEXT]` / `--file` is one-shot. Pipes without those flags are
 the JSONL worker (`--jsonl` forces it). Weights:

@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::sync::Arc;
 
 use memmap2::Mmap;
@@ -6,12 +7,38 @@ use crate::error::{TensorError, TensorResult};
 use crate::matmul::matmul_f32_bt;
 use crate::shape::Shape;
 
+/// Read-only mapping that keeps the `File` alive (Windows requires it).
+#[derive(Debug)]
+pub(crate) struct MappedFile {
+    _file: File,
+    map: Mmap,
+}
+
+impl MappedFile {
+    pub(crate) fn open(file: File) -> TensorResult<Arc<Self>> {
+        // SAFETY: read-only mapping; `_file` is kept so the fd is not closed
+        // under the map (Windows). Another process truncating the file can
+        // still SIGBUS — weights are treated as immutable after load.
+        let map =
+            unsafe { Mmap::map(&file) }.map_err(|e| TensorError::msg(format!("mmap: {e}")))?;
+        Ok(Arc::new(Self { _file: file, map }))
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &self.map
+    }
+}
+
 /// Contiguous row-major F32 storage: heap or mmap view.
 #[derive(Debug, Clone)]
 enum F32Store {
     Heap(Arc<Vec<f32>>),
     Mmap {
-        map: Arc<Mmap>,
+        map: Arc<MappedFile>,
         offset: usize,
         nelem: usize,
     },
@@ -46,7 +73,7 @@ impl Tensor {
 
     /// Zero-copy F32 view into a shared mmap (LE floats).
     pub(crate) fn from_mmap_f32(
-        map: Arc<Mmap>,
+        map: Arc<MappedFile>,
         offset: usize,
         shape: impl Into<Shape>,
     ) -> TensorResult<Self> {
@@ -103,7 +130,7 @@ impl Tensor {
         match &self.data {
             F32Store::Heap(v) => v.as_slice(),
             F32Store::Mmap { map, offset, nelem } => {
-                let bytes = &map[*offset..*offset + nelem * 4];
+                let bytes = &map.as_bytes()[*offset..*offset + nelem * 4];
                 // SAFETY: safetensors F32 payload is aligned LE; offset is 4-byte aligned.
                 unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const f32, *nelem) }
             }
@@ -121,7 +148,7 @@ impl Tensor {
     fn ensure_heap_mut(&mut self) {
         if let F32Store::Mmap { map, offset, nelem } = &self.data {
             let sl = {
-                let bytes = &map[*offset..*offset + *nelem * 4];
+                let bytes = &map.as_bytes()[*offset..*offset + *nelem * 4];
                 // SAFETY: same as `as_slice` for the mmap view.
                 unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const f32, *nelem) }
             };

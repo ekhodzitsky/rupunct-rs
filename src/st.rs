@@ -46,13 +46,38 @@ pub(crate) fn parse_index(bytes: &[u8]) -> TensorResult<Vec<TensorDesc>> {
         .as_object()
         .ok_or_else(|| TensorError::msg("safetensors header is not an object"))?;
     let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
     for (name, spec) in obj {
         if name == "__metadata__" {
             continue;
         }
+        if !seen.insert(name.as_str()) {
+            return Err(TensorError::msg(format!(
+                "safetensors: duplicate tensor '{name}'"
+            )));
+        }
         out.push(parse_tensor(name, spec, header_end, bytes.len())?);
     }
+    check_no_overlap(&out)?;
     Ok(out)
+}
+
+fn check_no_overlap(descs: &[TensorDesc]) -> TensorResult<()> {
+    let mut ranges: Vec<(usize, usize, &str)> = descs
+        .iter()
+        .filter(|d| d.nbytes > 0)
+        .map(|d| (d.offset, d.offset + d.nbytes, d.name.as_str()))
+        .collect();
+    ranges.sort_by_key(|r| r.0);
+    for pair in ranges.windows(2) {
+        if pair[0].1 > pair[1].0 {
+            return Err(TensorError::msg(format!(
+                "safetensors: overlapping tensors '{}' and '{}'",
+                pair[0].2, pair[1].2
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn parse_tensor(
@@ -321,5 +346,20 @@ mod tests {
         assert_eq!(idx.len(), 2);
         assert!(idx.iter().any(|t| t.dtype == Dtype::I32));
         assert!(idx.iter().any(|t| t.dtype == Dtype::I64));
+    }
+
+    #[test]
+    fn rejects_overlap() {
+        let mut header =
+            br#"{"a":{"dtype":"I32","shape":[2],"data_offsets":[0,8]},"b":{"dtype":"I32","shape":[2],"data_offsets":[4,12]}}"#
+                .to_vec();
+        while !header.len().is_multiple_of(8) {
+            header.push(b' ');
+        }
+        let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&header);
+        bytes.extend_from_slice(&[0u8; 16]);
+        let err = parse_index(&bytes).unwrap_err();
+        assert!(err.to_string().contains("overlapping"), "{err}");
     }
 }

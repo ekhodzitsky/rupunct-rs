@@ -106,6 +106,41 @@ fn jsonl_ready_and_frames() {
 }
 
 #[test]
+fn jsonl_invalid_utf8_is_error_frame() {
+    let dir = tiny_dir();
+    let stdin = [b"{\"text\":\"x\"}\n".as_slice(), &[0xff, 0xfe, b'\n']].concat();
+    let args: Vec<String> = vec!["--model-dir".into(), dir.path().to_str().unwrap().into()];
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let r = run_from(&args, Cursor::new(stdin), &mut stdout, &mut stderr, false);
+    assert!(r.is_ok(), "{r:?}");
+    let out = String::from_utf8(stdout).unwrap();
+    assert!(out.contains("invalid UTF-8"), "{out}");
+    assert!(out.contains("ready"), "{out}");
+}
+
+#[test]
+fn oneshot_rejects_non_utf8_stdin() {
+    let dir = tiny_dir();
+    let args: Vec<String> = vec![
+        "--model-dir".into(),
+        dir.path().to_str().unwrap().into(),
+        "--text".into(),
+        "-".into(),
+    ];
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let r = run_from(
+        &args,
+        Cursor::new([0xff, 0xfe]),
+        &mut stdout,
+        &mut stderr,
+        true,
+    );
+    assert!(r.unwrap_err().to_string().contains("UTF-8"));
+}
+
+#[test]
 fn jsonl_rejects_oversized_line() {
     let dir = tiny_dir();
     let huge = "x".repeat(MAX_JSONL_LINE + 1);
@@ -146,4 +181,19 @@ fn complete_bash_and_unknown_shell() {
     assert!(out.contains("complete -F _rupunct rupunct"), "{out}");
     let err = run_capture(&["--complete", "cmd"], "", true).0.unwrap_err();
     assert!(err.is_usage());
+    let (r, out, _) = run_capture(&["--complete=zsh"], "", true);
+    assert!(r.is_ok());
+    assert!(out.contains("_arguments"), "{out}");
+    let (r, out, _) = run_capture(&["--complete", "fish"], "", true);
+    assert!(r.is_ok());
+    assert!(out.contains("complete -c rupunct"), "{out}");
+}
+
+#[test]
+fn oneshot_lossy_flag() {
+    let dir = tiny_dir();
+    let d = dir.path().to_str().unwrap();
+    let (r, out, _) = run_capture(&["-m", d, "--lossy", "--text", "привет"], "", true);
+    assert!(r.is_ok(), "{r:?}");
+    assert_eq!(out.trim(), "привет");
 }

@@ -5,7 +5,7 @@ use crate::error::Result;
 use crate::gelu::gelu_tensor;
 use crate::layer_norm::LayerNorm;
 use crate::linear::Linear;
-use crate::matmul::{matmul_f32_nn_attn, matmul_f32_nt};
+use crate::matmul::{matmul_f32_nn_attn_strided, matmul_f32_nt_strided};
 use crate::tensor::Tensor;
 use crate::weights::WeightSet;
 use crate::ws::{layer_norm_from_ws, linear_from_ws};
@@ -67,32 +67,24 @@ impl Attention {
         let ks = k.as_slice();
         let vs = v.as_slice();
         let mut scores = vec![0.0f32; seq * seq];
-        let mut head_out = vec![0.0f32; seq * self.head_dim];
 
         for h in 0..self.n_heads {
-            let mut qh = vec![0.0f32; seq * self.head_dim];
-            let mut kh = vec![0.0f32; seq * self.head_dim];
-            let mut vh = vec![0.0f32; seq * self.head_dim];
-            for t in 0..seq {
-                let src = t * self.hidden + h * self.head_dim;
-                let dst = t * self.head_dim;
-                qh[dst..dst + self.head_dim].copy_from_slice(&qs[src..src + self.head_dim]);
-                kh[dst..dst + self.head_dim].copy_from_slice(&ks[src..src + self.head_dim]);
-                vh[dst..dst + self.head_dim].copy_from_slice(&vs[src..src + self.head_dim]);
-            }
-            matmul_f32_nt(seq, self.head_dim, &qh, &kh, &mut scores)?;
+            let off = h * self.head_dim;
+            matmul_f32_nt_strided(seq, self.head_dim, qs, ks, self.hidden, off, &mut scores)?;
             for s in scores.iter_mut() {
                 *s *= scale;
             }
             mask_keys(&mut scores, seq, attention_mask);
             softmax_rows(&mut scores, seq);
-            matmul_f32_nn_attn(seq, self.head_dim, &scores, &vh, &mut head_out)?;
-            for t in 0..seq {
-                let dst = t * self.hidden + h * self.head_dim;
-                let src = t * self.head_dim;
-                context[dst..dst + self.head_dim]
-                    .copy_from_slice(&head_out[src..src + self.head_dim]);
-            }
+            matmul_f32_nn_attn_strided(
+                seq,
+                self.head_dim,
+                &scores,
+                vs,
+                &mut context,
+                self.hidden,
+                off,
+            )?;
         }
 
         let attn = Tensor::from_vec(context, vec![seq, self.hidden])?;

@@ -53,10 +53,29 @@ print(f"wrote {out}")
 PY
 fi
 
+check_sha256() {
+  python3 - "$1" "$2" <<'PY'
+import hashlib, sys
+path, expect = sys.argv[1], sys.argv[2]
+with open(path, "rb") as f:
+    got = hashlib.sha256(f.read()).hexdigest()
+if got != expect:
+    raise SystemExit(f"{path}: sha256 {got} != {expect}")
+print(f"ok sha256 {path}")
+PY
+}
+
 for f in model.safetensors tokenizer.json config.json; do
   if [ ! -f "$DEST/$f" ]; then
     echo "fetch-model: missing $DEST/$f" >&2
     exit 1
   fi
 done
+
+# Content hashes at RUPunct/RUPunct_small @ $REVISION
+check_sha256 "$DEST/config.json" "ec5503b1b544ee19563895c7c73884a4ec94b52b17eda172c11dcdc0eb924f03"
+check_sha256 "$DEST/tokenizer.json" "7ca617388c2092a3a84272025c52bbf3c6db0aee225c0351186295c0b5d3ddc6"
+if [ -f "$DEST/pytorch_model.bin" ]; then
+  check_sha256 "$DEST/pytorch_model.bin" "5b05a696d0a9629e0938852e221abcd84cc75ab67a4445fb0b4ea40630dd6b59"
+fi
 echo "ok $DEST (revision $REVISION)"

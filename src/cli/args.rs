@@ -63,29 +63,43 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
                 return Ok(Cmd::Version);
             }
             "--complete" => {
-                complete = Some(need_value(args, &mut i, flag, inline)?);
+                set_once(&mut complete, need_value(args, &mut i, flag, inline)?, flag)?;
             }
             "--text" => {
-                text = Some(need_value(args, &mut i, flag, inline)?);
+                set_once(&mut text, need_value(args, &mut i, flag, inline)?, flag)?;
             }
             "-f" | "--file" => {
-                file = Some(need_value(args, &mut i, flag, inline)?);
+                set_once(&mut file, need_value(args, &mut i, flag, inline)?, flag)?;
             }
             "-m" | "--model-dir" => {
-                model_dir = Some(PathBuf::from(need_value(args, &mut i, flag, inline)?));
+                let v = need_value(args, &mut i, flag, inline)?;
+                if model_dir.is_some() {
+                    return Err(format!("multiple {flag} options"));
+                }
+                model_dir = Some(PathBuf::from(v));
             }
             "--jsonl" => {
                 reject_inline(flag, inline)?;
-                jsonl = true;
+                set_flag(&mut jsonl, flag)?;
             }
             "--lossy" => {
                 reject_inline(flag, inline)?;
-                lossy = true;
+                set_flag(&mut lossy, flag)?;
             }
             "--max-seq" => {
-                max_seq = Some(parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?);
+                if max_seq.is_some() {
+                    return Err("multiple --max-seq options".into());
+                }
+                let n = parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?;
+                if n < 2 {
+                    return Err("--max-seq must be at least 2".into());
+                }
+                max_seq = Some(n);
             }
             "--overlap" => {
+                if overlap.is_some() {
+                    return Err("multiple --overlap options".into());
+                }
                 overlap = Some(parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?);
             }
             other if other.starts_with('-') && other != "-" => {
@@ -99,8 +113,16 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
     }
 
     if let Some(shell) = complete {
-        if text.is_some() || file.is_some() || positional.is_some() || jsonl {
-            return Err("--complete cannot be combined with restore options".into());
+        if text.is_some()
+            || file.is_some()
+            || positional.is_some()
+            || jsonl
+            || lossy
+            || max_seq.is_some()
+            || overlap.is_some()
+            || model_dir.is_some()
+        {
+            return Err("--complete cannot be combined with other options".into());
         }
         return Ok(Cmd::Complete(shell));
     }
@@ -200,9 +222,16 @@ fn need_value(
         return Ok(v.to_string());
     }
     *i += 1;
-    args.get(*i)
+    let v = args
+        .get(*i)
         .cloned()
-        .ok_or_else(|| format!("{flag} needs a value"))
+        .ok_or_else(|| format!("{flag} needs a value"))?;
+    if v.starts_with('-') && v != "-" {
+        return Err(format!(
+            "{flag} needs a value, got '{v}' (use {flag}={v} to pass a flag-like string)"
+        ));
+    }
+    Ok(v)
 }
 
 fn set_once(slot: &mut Option<String>, value: String, what: &str) -> Result<(), String> {
@@ -210,6 +239,14 @@ fn set_once(slot: &mut Option<String>, value: String, what: &str) -> Result<(), 
         return Err(format!("multiple {what} operands"));
     }
     *slot = Some(value);
+    Ok(())
+}
+
+fn set_flag(slot: &mut bool, flag: &str) -> Result<(), String> {
+    if *slot {
+        return Err(format!("multiple {flag} options"));
+    }
+    *slot = true;
     Ok(())
 }
 
@@ -263,6 +300,13 @@ mod tests {
     fn jsonl_conflict() {
         assert!(parse(&a(&["--jsonl", "--text", "x"]), false).is_err());
         assert!(parse(&a(&["--text", "a", "b"]), true).is_err());
+        assert!(parse(&a(&["--text", "a", "--text", "b"]), true).is_err());
+        assert!(parse(&a(&["--text", "--model-dir"]), true).is_err());
+        assert!(parse(&a(&["--max-seq", "0"]), true).is_err());
+        assert!(parse(&a(&["--jsonl", "--jsonl"]), false).is_err());
+        assert!(parse(&a(&["--lossy", "--lossy", "--text", "x"]), true).is_err());
+        assert!(parse(&a(&["--complete", "bash", "--lossy"]), true).is_err());
+        assert!(parse(&a(&["--text=-"]), true).is_ok());
     }
 
     #[test]

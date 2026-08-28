@@ -6,12 +6,16 @@ use std::path::PathBuf;
 use crate::{Punctuator, RestoreOpts, default_model_dir};
 
 mod args;
+mod capped;
 mod help;
 use args::{Cmd, OneShot, Worker, parse};
+use capped::{NextLine, ReadAll, read_capped_line, read_capped_to_string};
 use help::{write_complete, write_help};
 
 /// Reject oversized JSONL frames so a single line cannot exhaust RAM.
 pub(crate) const MAX_JSONL_LINE: usize = 1_048_576;
+/// Cap for `--text -` / `--file` one-shot bodies.
+pub(crate) const MAX_ONESHOT: usize = 8 * 1024 * 1024;
 
 #[derive(Debug)]
 pub(crate) enum CliError {
@@ -112,14 +116,17 @@ where
     W: Write,
 {
     let source = if cmd.from_stdin {
-        let mut buf = String::new();
-        let mut r = stdin;
-        r.read_to_string(&mut buf).map_err(io_err)?;
-        buf
+        read_all(stdin)?
     } else if cmd.from_file {
-        std::fs::read_to_string(&cmd.text)
-            .map_err(|e| CliError::fail(format!("failed to read {}: {e}", cmd.text)))?
+        let f = std::fs::File::open(&cmd.text)
+            .map_err(|e| CliError::fail(format!("failed to read {}: {e}", cmd.text)))?;
+        read_all(std::io::BufReader::new(f))?
     } else {
+        if cmd.text.len() > MAX_ONESHOT {
+            return Err(CliError::fail(format!(
+                "input larger than {MAX_ONESHOT} bytes"
+            )));
+        }
         cmd.text
     };
     let punct = load(cmd.model_dir)?;
@@ -135,25 +142,43 @@ where
     let punct = load(cmd.model_dir)?;
     writeln!(stdout, r#"{{"ready":true}}"#).map_err(io_err)?;
     stdout.flush().map_err(io_err)?;
-    for line in stdin.lines() {
-        let line = line.map_err(io_err)?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        if line.len() > MAX_JSONL_LINE {
-            writeln!(stdout, "{}", json_error(None, "line too long")).map_err(io_err)?;
-            stdout.flush().map_err(io_err)?;
-            continue;
-        }
-        match handle(&punct, &line, cmd.lossy, cmd.opts) {
-            Ok((id, out)) => {
-                writeln!(stdout, "{}", json_text(id.as_ref(), &out)).map_err(io_err)?
+    let mut stdin = stdin;
+    loop {
+        match read_capped_line(&mut stdin, MAX_JSONL_LINE).map_err(io_err)? {
+            NextLine::Eof => break,
+            NextLine::TooLong => {
+                writeln!(stdout, "{}", json_error(None, "line too long")).map_err(io_err)?;
             }
-            Err((id, e)) => writeln!(stdout, "{}", json_error(id.as_ref(), &e)).map_err(io_err)?,
+            NextLine::InvalidUtf8 => {
+                writeln!(stdout, "{}", json_error(None, "invalid UTF-8")).map_err(io_err)?;
+            }
+            NextLine::Ok(line) => {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                match handle(&punct, &line, cmd.lossy, cmd.opts) {
+                    Ok((id, out)) => {
+                        writeln!(stdout, "{}", json_text(id.as_ref(), &out)).map_err(io_err)?;
+                    }
+                    Err((id, e)) => {
+                        writeln!(stdout, "{}", json_error(id.as_ref(), &e)).map_err(io_err)?;
+                    }
+                }
+            }
         }
         stdout.flush().map_err(io_err)?;
     }
     Ok(())
+}
+
+fn read_all(mut r: impl std::io::Read) -> Result<String, CliError> {
+    match read_capped_to_string(&mut r, MAX_ONESHOT).map_err(io_err)? {
+        ReadAll::Ok(s) => Ok(s),
+        ReadAll::TooLong => Err(CliError::fail(format!(
+            "input larger than {MAX_ONESHOT} bytes"
+        ))),
+        ReadAll::InvalidUtf8 => Err(CliError::fail("input is not valid UTF-8")),
+    }
 }
 
 fn handle(

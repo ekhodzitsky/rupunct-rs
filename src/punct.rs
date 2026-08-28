@@ -41,7 +41,12 @@ impl Punctuator {
 
     /// Restore each string independently (no padded batch GEMM). First failure aborts.
     pub fn restore_batch(&self, texts: &[&str]) -> Result<Vec<String>> {
-        texts.iter().map(|t| self.restore(t)).collect()
+        self.restore_batch_with(texts, RestoreOpts::default())
+    }
+
+    /// [`restore_batch`](Self::restore_batch) with an explicit token window / overlap.
+    pub fn restore_batch_with(&self, texts: &[&str], opts: RestoreOpts) -> Result<Vec<String>> {
+        texts.iter().map(|t| self.restore_with(t, opts)).collect()
     }
 }
 

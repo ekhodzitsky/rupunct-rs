@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 use crate::blas::gemm_nn;
-use crate::blas::{gemm_attn_v, gemm_nt_weight, gemm_scores};
+use crate::blas::gemm_nt_weight;
 use crate::error::{TensorError, TensorResult};
 
 /// `c = a @ b` with shapes `(m,k) x (k,n) -> (m,n)` (row-major).
@@ -87,6 +87,7 @@ pub(crate) fn matmul_f32_bt(
 }
 
 /// `scores[t,t] = q[t,d] @ k[t,d]^T`.
+#[cfg(test)]
 pub(crate) fn matmul_f32_nt(
     t: usize,
     d: usize,
@@ -94,14 +95,32 @@ pub(crate) fn matmul_f32_nt(
     k: &[f32],
     scores: &mut [f32],
 ) -> TensorResult<()> {
-    if q.len() != t * d || k.len() != t * d || scores.len() != t * t {
-        return Err(TensorError::shape("matmul_f32_nt size mismatch"));
+    matmul_f32_nt_strided(t, d, q, k, d, 0, scores)
+}
+
+/// Q/K are `[t, ld]` with the `d`-wide head starting at `off`.
+pub(crate) fn matmul_f32_nt_strided(
+    t: usize,
+    d: usize,
+    q: &[f32],
+    k: &[f32],
+    ld: usize,
+    off: usize,
+    scores: &mut [f32],
+) -> TensorResult<()> {
+    let need = t
+        .saturating_sub(1)
+        .saturating_mul(ld)
+        .saturating_add(off + d);
+    if ld < d || off + d > ld || q.len() < need || k.len() < need || scores.len() != t * t {
+        return Err(TensorError::shape("matmul_f32_nt_strided size mismatch"));
     }
-    gemm_scores(t, d, q, k, scores);
+    crate::blas::gemm_scores_strided(t, d, q, k, ld, off, scores);
     Ok(())
 }
 
 /// `out[t,d] = scores[t,t] @ v[t,d]`.
+#[cfg(test)]
 pub(crate) fn matmul_f32_nn_attn(
     t: usize,
     d: usize,
@@ -109,10 +128,29 @@ pub(crate) fn matmul_f32_nn_attn(
     v: &[f32],
     out: &mut [f32],
 ) -> TensorResult<()> {
-    if scores.len() != t * t || v.len() != t * d || out.len() != t * d {
-        return Err(TensorError::shape("matmul_f32_nn_attn size mismatch"));
+    matmul_f32_nn_attn_strided(t, d, scores, v, out, d, 0)
+}
+
+/// V/out are `[t, ld]` with the head at `off`.
+pub(crate) fn matmul_f32_nn_attn_strided(
+    t: usize,
+    d: usize,
+    scores: &[f32],
+    v: &[f32],
+    out: &mut [f32],
+    ld: usize,
+    off: usize,
+) -> TensorResult<()> {
+    let need = t
+        .saturating_sub(1)
+        .saturating_mul(ld)
+        .saturating_add(off + d);
+    if ld < d || off + d > ld || v.len() < need || out.len() < need || scores.len() != t * t {
+        return Err(TensorError::shape(
+            "matmul_f32_nn_attn_strided size mismatch",
+        ));
     }
-    gemm_attn_v(t, d, scores, v, out);
+    crate::blas::gemm_attn_v_strided(t, d, scores, v, out, ld, off);
     Ok(())
 }
 
@@ -167,5 +205,25 @@ mod tests {
         assert!((out[0] - 3.0).abs() < 1e-5);
         assert!((out[3] - 6.0).abs() < 1e-5);
         assert!(matmul_f32_nn_attn(2, 2, &[1.0], &v, &mut out).is_err());
+    }
+
+    #[test]
+    fn strided_head_matches_packed() {
+        // two tokens, hidden=4, head_dim=2, head 1 at offset 2
+        let q = [1.0f32, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0];
+        let k = q;
+        let packed_q = [0.0f32, 1.0, 1.0, 0.0];
+        let mut packed = [0.0f32; 4];
+        let mut strided = [0.0f32; 4];
+        matmul_f32_nt(2, 2, &packed_q, &packed_q, &mut packed).unwrap();
+        matmul_f32_nt_strided(2, 2, &q, &k, 4, 2, &mut strided).unwrap();
+        for i in 0..4 {
+            assert!((packed[i] - strided[i]).abs() < 1e-5);
+        }
+        let mut s = [0.0f32; 4];
+        assert!(matmul_f32_nt_strided(2, 2, &[1.0], &[1.0], 2, 0, &mut s).is_err());
+        let v = [1.0f32; 4];
+        let mut o = [0.0f32; 4];
+        assert!(matmul_f32_nn_attn_strided(2, 2, &[1.0], &v, &mut o, 2, 0).is_err());
     }
 }

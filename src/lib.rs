@@ -9,6 +9,7 @@ mod blas;
 mod cli;
 mod config;
 mod encoder;
+mod erf;
 mod error;
 mod gelu;
 mod labels;

@@ -77,14 +77,14 @@ impl Tokenizer {
         let mut start = 0;
         let mut is_bad = false;
         let checkpoint = out.len();
+        let mut candidate = String::new();
         while start < word.len() {
             let mut end = word.len();
             let mut found = None;
             while start < end {
                 let substr = &word[start..end];
                 let id = if start > 0 {
-                    let mut candidate =
-                        String::with_capacity(self.continuing_subword_prefix.len() + substr.len());
+                    candidate.clear();
                     candidate.push_str(&self.continuing_subword_prefix);
                     candidate.push_str(substr);
                     self.vocab.get(candidate.as_str()).copied()

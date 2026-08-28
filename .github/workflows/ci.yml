@@ -26,3 +26,16 @@ jobs:
         run: python3 scripts/check-file-size.py
       - name: changelog
         run: python3 scripts/check-changelog.py
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: tests
+        run: cargo test --lib --bins

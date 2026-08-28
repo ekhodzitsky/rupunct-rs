@@ -38,7 +38,9 @@ Exit status:
 JSONL (stdin/stdout, one object per line):
   {{\"ready\":true}}
   → {{\"text\":\"…\"}}           ← {{\"text\":\"…\"}} | {{\"error\":\"…\"}}
-  Optional \"id\" on a request is copied onto the response.",
+  Optional \"id\" on a request is copied onto the response.
+  Frames larger than 1 MiB or invalid UTF-8 are {{\"error\"}} frames.
+  --file / stdin one-shot bodies are capped at 8 MiB.",
         env!("CARGO_PKG_VERSION")
     )
 }

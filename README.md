@@ -34,9 +34,9 @@ the JSONL worker.
 {"error":"text is empty"}
 ```
 
-Request-level failures (bad JSON, empty `text`, restore error, oversized line)
-are `{"error":"…"}` frames; the loop continues. Optional `"id"` is echoed on
-the response. Only a broken stdin/stdout aborts the worker.
+Request-level failures (bad JSON, empty `text`, restore error, oversized line,
+invalid UTF-8) are `{"error":"…"}` frames; the loop continues. Optional `"id"`
+is echoed on the response. Only a broken stdin/stdout aborts the worker.
 
 `--text` prints the restored line or exits **1** on load/restore failure.
 

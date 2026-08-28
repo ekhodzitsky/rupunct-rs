@@ -1,27 +1,12 @@
 //! BERT `gelu` (erf form): `0.5 * x * (1 + erf(x / sqrt(2)))`.
 
+use crate::erf::erff;
 use crate::error::Result;
 use crate::tensor::Tensor;
 
 #[inline]
 pub(crate) fn gelu(x: f32) -> f32 {
-    let x64 = x as f64;
-    let cdf = 0.5 * (1.0 + erf_as(x64 * std::f64::consts::FRAC_1_SQRT_2));
-    (x64 * cdf) as f32
-}
-
-/// Abramowitz & Stegun 7.1.26; max |err| ~1.5e-7 (in-tree, no libm).
-#[inline]
-fn erf_as(x: f64) -> f64 {
-    let sign = if x < 0.0 { -1.0 } else { 1.0 };
-    let x = x.abs();
-    let t = 1.0 / (1.0 + 0.3275911 * x);
-    let y = 1.0
-        - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t
-            + 0.254829592)
-            * t
-            * (-x * x).exp();
-    sign * y
+    0.5 * x * (1.0 + erff(x * std::f32::consts::FRAC_1_SQRT_2))
 }
 
 pub(crate) fn gelu_tensor(x: &Tensor) -> Result<Tensor> {

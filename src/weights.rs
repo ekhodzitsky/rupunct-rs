@@ -4,11 +4,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use memmap2::Mmap;
-
 use crate::error::{TensorError, TensorResult};
 use crate::st::{self, Dtype};
-use crate::tensor::Tensor;
+use crate::tensor::{MappedFile, Tensor};
 
 #[derive(Debug, Default)]
 pub(crate) struct WeightSet {
@@ -21,18 +19,11 @@ impl WeightSet {
     }
 }
 
-fn open_mmap(path: &Path) -> TensorResult<Arc<Mmap>> {
+pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
     let file = std::fs::File::open(path)
         .map_err(|e| TensorError::msg(format!("open {}: {e}", path.display())))?;
-    // SAFETY: read-only mapping; file is not truncated while mapped.
-    let mmap = unsafe { Mmap::map(&file) }
-        .map_err(|e| TensorError::msg(format!("mmap {}: {e}", path.display())))?;
-    Ok(Arc::new(mmap))
-}
-
-pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
-    let map = open_mmap(path)?;
-    let bytes: &[u8] = &map;
+    let mapped = MappedFile::open(file)?;
+    let bytes = mapped.as_bytes();
     let index = st::parse_index(bytes)?;
     let mut out = WeightSet::default();
     for desc in index {
@@ -54,10 +45,10 @@ pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
         }
         let nelem = desc.nbytes / 4;
         let t = if desc.offset.is_multiple_of(4)
-            && desc.offset + desc.nbytes <= bytes.len()
+            && desc.offset + desc.nbytes <= mapped.len()
             && nelem >= 1024
         {
-            Tensor::from_mmap_f32(Arc::clone(&map), desc.offset, desc.shape)?
+            Tensor::from_mmap_f32(Arc::clone(&mapped), desc.offset, desc.shape)?
         } else {
             let raw = &bytes[desc.offset..desc.offset + desc.nbytes];
             let mut vals = Vec::with_capacity(nelem);

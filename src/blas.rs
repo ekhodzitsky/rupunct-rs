@@ -188,18 +188,39 @@ pub fn gemm_nt_weight(m: usize, k: usize, n: usize, a: &[f32], b_t: &[f32], c: &
     gemm_row_x_col(m, k, n, 1.0, a, b_t, 0.0, c);
 }
 
-/// `scores[t,t] = q[t,d] @ k[t,d]^T`.
-pub fn gemm_scores(t: usize, d: usize, q: &[f32], k: &[f32], scores: &mut [f32]) {
-    debug_assert_eq!(q.len(), t * d);
-    debug_assert_eq!(k.len(), t * d);
+/// `scores[t,t] = q[t,d] @ k[t,d]^T` with Q/K in `[t, ld]` and the head at `off`.
+pub fn gemm_scores_strided(
+    t: usize,
+    d: usize,
+    q: &[f32],
+    k: &[f32],
+    ld: usize,
+    off: usize,
+    scores: &mut [f32],
+) {
     debug_assert_eq!(scores.len(), t * t);
+    debug_assert!(ld >= d && off + d <= ld);
+    debug_assert!(
+        q.len()
+            >= t.saturating_sub(1)
+                .saturating_mul(ld)
+                .saturating_add(off + d)
+    );
+    debug_assert!(
+        k.len()
+            >= t.saturating_sub(1)
+                .saturating_mul(ld)
+                .saturating_add(off + d)
+    );
+    let qh = &q[off..];
+    let kh = &k[off..];
 
     #[cfg(target_os = "macos")]
     {
-        // SAFETY: lengths checked; `scores` is uniquely borrowed.
+        // SAFETY: lengths checked; `scores` is uniquely borrowed; lda = `ld`.
         unsafe {
             sgemm(
-                b'T', b'N', t as i32, t as i32, d as i32, 1.0, k, d as i32, q, d as i32, 0.0,
+                b'T', b'N', t as i32, t as i32, d as i32, 1.0, kh, ld as i32, qh, ld as i32, 0.0,
                 scores, t as i32,
             );
         }
@@ -218,11 +239,11 @@ pub fn gemm_scores(t: usize, d: usize, q: &[f32], k: &[f32], scores: &mut [f32])
                 1,
                 t as isize,
                 false,
-                q.as_ptr(),
+                qh.as_ptr(),
                 1,
-                d as isize,
-                k.as_ptr(),
-                d as isize,
+                ld as isize,
+                kh.as_ptr(),
+                ld as isize,
                 1,
                 0.0f32,
                 1.0f32,
@@ -235,19 +256,40 @@ pub fn gemm_scores(t: usize, d: usize, q: &[f32], k: &[f32], scores: &mut [f32])
     }
 }
 
-/// `out[t,d] = scores[t,t] @ v[t,d]`.
-pub fn gemm_attn_v(t: usize, d: usize, scores: &[f32], v: &[f32], out: &mut [f32]) {
+/// `out[t,d] = scores[t,t] @ v[t,d]` with V/out in `[t, ld]` and the head at `off`.
+pub fn gemm_attn_v_strided(
+    t: usize,
+    d: usize,
+    scores: &[f32],
+    v: &[f32],
+    out: &mut [f32],
+    ld: usize,
+    off: usize,
+) {
     debug_assert_eq!(scores.len(), t * t);
-    debug_assert_eq!(v.len(), t * d);
-    debug_assert_eq!(out.len(), t * d);
+    debug_assert!(ld >= d && off + d <= ld);
+    debug_assert!(
+        v.len()
+            >= t.saturating_sub(1)
+                .saturating_mul(ld)
+                .saturating_add(off + d)
+    );
+    debug_assert!(
+        out.len()
+            >= t.saturating_sub(1)
+                .saturating_mul(ld)
+                .saturating_add(off + d)
+    );
+    let vh = &v[off..];
+    let oh = &mut out[off..];
 
     #[cfg(target_os = "macos")]
     {
-        // SAFETY: lengths checked; `out` is uniquely borrowed.
+        // SAFETY: lengths checked; `oh` is uniquely borrowed; lda = `ld`.
         unsafe {
             sgemm(
-                b'N', b'N', d as i32, t as i32, t as i32, 1.0, v, d as i32, scores, t as i32, 0.0,
-                out, d as i32,
+                b'N', b'N', d as i32, t as i32, t as i32, 1.0, vh, ld as i32, scores, t as i32,
+                0.0, oh, ld as i32,
             );
         }
     }
@@ -255,22 +297,22 @@ pub fn gemm_attn_v(t: usize, d: usize, scores: &[f32], v: &[f32], out: &mut [f32
     #[cfg(not(target_os = "macos"))]
     {
         use gemm::{Parallelism, gemm};
-        // SAFETY: lengths checked; `out` is uniquely borrowed.
+        // SAFETY: lengths checked; `oh` is uniquely borrowed.
         unsafe {
             gemm(
                 t,
                 d,
                 t,
-                out.as_mut_ptr(),
+                oh.as_mut_ptr(),
                 1,
-                d as isize,
+                ld as isize,
                 false,
                 scores.as_ptr(),
                 1,
                 t as isize,
-                v.as_ptr(),
+                vh.as_ptr(),
                 1,
-                d as isize,
+                ld as isize,
                 0.0f32,
                 1.0f32,
                 false,

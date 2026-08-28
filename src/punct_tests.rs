@@ -83,6 +83,12 @@ fn restore_batch_and_lossy() {
     let batch = p.restore_batch(&["привет", "мир", ""]).unwrap();
     assert_eq!(batch.len(), 3);
     assert_eq!(batch[2], "");
+    let opts = crate::RestoreOpts {
+        max_window_tokens: 8,
+        overlap_tokens: 2,
+    };
+    let batch = p.restore_batch_with(&["привет"], opts).unwrap();
+    assert_eq!(batch.len(), 1);
 }
 
 #[test]
@@ -103,7 +109,9 @@ fn restore_windows_long_input() {
 #[test]
 #[ignore = "requires RUPunct weights at $RUPUNCT_MODEL or ~/.rupunct/punct"]
 fn test_restore_reference_string() {
-    let dir = crate::model::live_model_dir().expect("live model");
+    let Some(dir) = crate::model::live_model_dir() else {
+        return;
+    };
     let punct = Punctuator::load(&dir).expect("load punct model");
     let out = punct
         .restore("привет меня зовут анна сколько будет стоить шестьдесят тысяч тенге")
