@@ -19,6 +19,7 @@ mod model;
 mod punct;
 mod restore;
 mod shape;
+mod st;
 mod tensor;
 mod tokenizer_json;
 mod unicode;

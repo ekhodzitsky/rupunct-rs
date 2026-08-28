@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-28
+
+### Changed
+
+- In-tree safetensors reader/writer. The `safetensors` crate is gone.
+- `tokenizer.json` is walked as `serde_json::Value`. No `serde::Deserialize`
+  and no direct `serde` dependency (JSONL/`config.json` still use `serde_json`).
+
 ## [0.4.0] - 2026-08-27
 
 ### Added

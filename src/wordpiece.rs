@@ -52,12 +52,14 @@ impl Encoding {
 impl Tokenizer {
     pub(crate) fn from_file(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
-        let file: TokenizerFile = serde_json::from_str(&raw).map_err(|e| {
+        let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
             Error::tokenizer(format!(
                 "failed to parse tokenizer file {}: {e}",
                 path.display()
             ))
         })?;
+        let file = TokenizerFile::from_value(value)
+            .map_err(|e| Error::tokenizer(format!("{}: {e}", path.display())))?;
         Self::from_parsed(file).map_err(|e| {
             Error::tokenizer(format!(
                 "unsupported tokenizer file {}: {e}",

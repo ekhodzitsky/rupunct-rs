@@ -1,14 +1,11 @@
 //! Tiny BERT checkpoint writer for tests.
 
-use std::collections::BTreeMap;
 use std::path::Path;
-
-use safetensors::Dtype;
-use safetensors::tensor::TensorView;
 
 use crate::error::{Error, Result};
 use crate::labels::process_token;
 use crate::model::{CONFIG_FILE, MODEL_FILE, TOKENIZER_FILE};
+use crate::st::{WriteTensor, serialize};
 
 /// RUPunct_small `id2label` order.
 pub const ID2LABEL: [&str; 33] = [
@@ -312,18 +309,15 @@ fn write_weights(dir: &Path, spec: &TinySpec) -> Result<()> {
 }
 
 fn write_safetensors(path: &Path, tensors: &[(String, Vec<usize>, Vec<f32>)]) -> Result<()> {
-    let bufs: Vec<Vec<u8>> = tensors
+    let items: Vec<WriteTensor> = tensors
         .iter()
-        .map(|(_, _, data)| data.iter().flat_map(|f| f.to_le_bytes()).collect())
+        .map(|(name, shape, data)| WriteTensor::F32 {
+            name: name.clone(),
+            shape: shape.clone(),
+            data: data.clone(),
+        })
         .collect();
-    let mut map: BTreeMap<String, TensorView<'_>> = BTreeMap::new();
-    for (i, (name, shape, _)) in tensors.iter().enumerate() {
-        let view = TensorView::new(Dtype::F32, shape.clone(), &bufs[i])
-            .map_err(|e| Error::model(format!("tensor view {name}: {e}")))?;
-        map.insert(name.clone(), view);
-    }
-    let bytes =
-        safetensors::serialize(&map, None).map_err(|e| Error::model(format!("serialize: {e}")))?;
+    let bytes = serialize(&items).map_err(|e| Error::model(e.to_string()))?;
     std::fs::write(path, bytes).map_err(|e| Error::io(path, e))
 }
 

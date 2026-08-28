@@ -40,9 +40,10 @@ in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` / `--overlap` / `RestoreOpts`).
 
-Direct crate deps stay tiny: serde/serde_json, safetensors, memmap2, and
-`gemm` only on non-macOS (Accelerate on macOS). No clap, thiserror, rayon,
-or libm.
+Direct crate deps stay tiny: `serde_json`, `memmap2`, and `gemm` only on
+non-macOS (Accelerate on macOS). Safetensors and `tokenizer.json` are parsed
+in-tree (no `safetensors` crate, no `serde::Deserialize`). No clap, thiserror,
+rayon, or libm.
 
 ## Forbidden
 

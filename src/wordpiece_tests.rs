@@ -1,17 +1,14 @@
 //! Unit tests for the in-tree WordPiece tokenizer.
 
 use super::*;
-use serde::Deserialize;
 
 fn fixtures_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-#[derive(Deserialize)]
 struct GoldenCase {
     input: String,
     ids: Vec<u32>,
-    tokens: Vec<String>,
     attention_mask: Vec<u32>,
     word_ids: Vec<Option<u32>>,
 }
@@ -19,7 +16,35 @@ struct GoldenCase {
 fn load_golden() -> Vec<GoldenCase> {
     let raw = std::fs::read_to_string(fixtures_dir().join("wordpiece_golden.json"))
         .expect("read golden fixtures");
-    serde_json::from_str(&raw).expect("parse golden fixtures")
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("parse golden fixtures");
+    let arr = value.as_array().expect("golden array");
+    arr.iter()
+        .map(|c| GoldenCase {
+            input: c["input"].as_str().expect("input").to_string(),
+            ids: u32_vec(&c["ids"]),
+            attention_mask: u32_vec(&c["attention_mask"]),
+            word_ids: c["word_ids"]
+                .as_array()
+                .expect("word_ids")
+                .iter()
+                .map(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        Some(v.as_u64().expect("wid") as u32)
+                    }
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn u32_vec(v: &serde_json::Value) -> Vec<u32> {
+    v.as_array()
+        .expect("u32 array")
+        .iter()
+        .map(|x| x.as_u64().expect("u32") as u32)
+        .collect()
 }
 
 fn assert_replays(tokenizer: &Tokenizer) {
@@ -27,7 +52,7 @@ fn assert_replays(tokenizer: &Tokenizer) {
     assert_eq!(cases.len(), 39, "fixture corpus size changed unexpectedly");
     for case in &cases {
         let enc = tokenizer.encode(&case.input, true);
-        let ctx = || format!("input {:?}\nexpected tokens {:?}", case.input, case.tokens);
+        let ctx = || format!("input {:?}", case.input);
         assert_eq!(enc.get_ids(), case.ids.as_slice(), "ids: {}", ctx());
         assert_eq!(
             enc.get_attention_mask(),
