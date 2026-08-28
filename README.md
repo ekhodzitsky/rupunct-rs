@@ -104,30 +104,36 @@ hyphens, newlines, and tabs; the join does not. Consecutive identical tags are
 **not** merged the way `pipeline(..., aggregation_strategy="first")` groups
 entities.
 
-In-tree F1 (`scripts/f1.py`, 31 gold sentences in `tests/fixtures/f1_gold.json`).
-Not a published benchmark; rare marks (colon: 1 example) are noise.
+F1 is `scripts/f1.py` (not CI). The 31-sentence in-tree set is a **smoke** test
+and ranked small above big; that ranking does **not** hold on public corpora.
+
+External gold (local cache, not git): 400 sentences from the
+[UD Russian-SynTagRus](https://github.com/UniversalDependencies/UD_Russian-SynTagRus)
+test split (CC BY-NC-SA 4.0) and 400 [Common Voice](https://github.com/common-voice/common-voice)
+ru prompts (CC0). Golos transcripts have **no** punctuation, so they cannot
+be F1 gold.
 
 | checkpoint | split | n | exact | punct micro-F1 (excl. `O`) | case acc. |
 |------------|-------|---|-------|----------------------------|-----------|
-| small | written | 17 | 76% | 0.91 | 100% |
-| small | ASR-style | 14 | 57% | 0.72 | 100% |
-| small | all | 31 | 68% | 0.84 | 100% |
-| big | written | 17 | 71% | 0.81 | 96% |
-| big | ASR-style | 14 | 57% | 0.70 | 98% |
-| big | all | 31 | 65% | 0.77 | 96% |
+| small | SynTagRus test | 400 | 40% | 0.78 | 97% |
+| small | Common Voice ru | 400 | 53% | 0.76 | 98% |
+| small | all | 800 | 46% | 0.77 | 98% |
+| big | SynTagRus test | 400 | 54% | 0.86 | 98% |
+| big | Common Voice ru | 400 | 62% | 0.83 | 98% |
+| big | all | 800 | 58% | 0.85 | 98% |
 
-Big does not win on this smoke set. It often prefers `Привет. Как дела?`
-where gold/small use `Привет, как дела?`. Live goldens (`cargo test --lib --
---ignored`) lock the small checkpoint’s strings; they are not a linguistic
-oracle. `RUPunct_big` uses the same 33 labels, a `lowercase=true` WordPiece
-tokenizer, and `max_position_embeddings` **512** (small allows 2048). This
-engine loads it:
+Default stays **small** (111 MB, 2048 positions, CPU). Big is the quality
+option (~711 MB F32, `max_position_embeddings` **512**, `lowercase=true`
+tokenizer, same 33 labels). Live goldens (`cargo test --lib -- --ignored`)
+lock the small checkpoint’s strings; they are not a linguistic oracle.
 
 ```sh
+scripts/fetch-eval.py
+scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 RUPUNCT_REPO=RUPunct/RUPunct_big scripts/fetch-model.sh
 # -> ~/.rupunct/RUPunct_big  (small stays in ~/.rupunct/punct)
 rupunct -m ~/.rupunct/RUPunct_big --text "привет как дела"
-RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py
+RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 ```
 
 SHA-256 pins are only for `RUPunct_small`. Override dest with `RUPUNCT_MODEL`.

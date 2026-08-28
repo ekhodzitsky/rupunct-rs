@@ -187,6 +187,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     ap.add_argument("--kind", choices=["written", "asr", "all"], default="all")
+    ap.add_argument("--quiet", action="store_true", help="print only the summary JSON")
     args = ap.parse_args()
 
     md = model_dir()
@@ -222,18 +223,19 @@ def main() -> int:
                 exact += 1
             if [x[0] for x in g] != [x[0] for x in p]:
                 skipped += 1
-                print(
-                    json.dumps(
-                        {
-                            "id": case["id"],
-                            "align": False,
-                            "gold": gold,
-                            "input": src,
-                            "pred": pred,
-                        },
-                        ensure_ascii=False,
+                if not args.quiet:
+                    print(
+                        json.dumps(
+                            {
+                                "id": case["id"],
+                                "align": False,
+                                "gold": gold,
+                                "input": src,
+                                "pred": pred,
+                            },
+                            ensure_ascii=False,
+                        )
                     )
-                )
                 continue
             aligned += 1
             by_kind[case.get("kind", "written")].append(ok)
@@ -241,17 +243,18 @@ def main() -> int:
                 punct_pairs.append((gp, pp))
                 if gcase != "none" and pcase != "none":
                     case_pairs.append((gcase, pcase))
-            print(
-                json.dumps(
-                    {
-                        "id": case["id"],
-                        "exact": ok,
-                        "gold": gold,
-                        "pred": pred,
-                    },
-                    ensure_ascii=False,
+            if not args.quiet:
+                print(
+                    json.dumps(
+                        {
+                            "id": case["id"],
+                            "exact": ok,
+                            "gold": gold,
+                            "pred": pred,
+                        },
+                        ensure_ascii=False,
+                    )
                 )
-            )
     finally:
         worker.close()
 

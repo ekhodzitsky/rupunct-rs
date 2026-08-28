@@ -5,10 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-28
+
+### Added
+
+- `scripts/fetch-eval.py` builds a local 800-sentence F1 cache: UD
+  Russian-SynTagRus test (written, CC BY-NC-SA) and Common Voice ru prompts
+  (CC0). Corpora stay off git.
+
 ### Changed
 
-- README reports `RUPunct_big` vs small on the in-tree F1 set. Big did not
-  win there. Big `max_position_embeddings` is 512.
+- On that cache `RUPunct_big` beats small (punct micro-F1 0.85 vs 0.77,
+  exact 58% vs 46%). The 31-sentence in-tree set ranked them the other way
+  and is only a smoke test. Golos transcripts have no punctuation, so they
+  are not F1 gold. Default checkpoint remains small.
 
 ## [0.11.0] - 2026-08-28
 
