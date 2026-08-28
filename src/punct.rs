@@ -4,7 +4,7 @@ use crate::bert::BertForTokenClassification;
 use crate::error::{Error, Result};
 use crate::limits::MAX_RESTORE_BYTES;
 use crate::model::TOKENIZER_FILE;
-use crate::restore::{self, RestoreOpts, RestoredWord, join_words};
+use crate::restore::{self, RestoreOpts, RestoredWord};
 use crate::wordpiece::Tokenizer;
 
 /// Punctuation and capitalization restorer.
@@ -28,11 +28,7 @@ impl Punctuator {
 
     /// [`restore`](Self::restore) with explicit window / strip / lowercase knobs.
     pub fn restore_with(&self, text: &str, opts: RestoreOpts) -> Result<String> {
-        let words = self.restore_words_with(text, opts)?;
-        if words.is_empty() {
-            return Ok(text.to_string());
-        }
-        Ok(join_words(&words))
+        Ok(self.restore_bundle(text, opts)?.0)
     }
 
     /// Per-word restore: surface, label, softmax score of the first subtoken.
@@ -42,15 +38,29 @@ impl Punctuator {
 
     /// [`restore_words`](Self::restore_words) with explicit knobs.
     pub fn restore_words_with(&self, text: &str, opts: RestoreOpts) -> Result<Vec<RestoredWord>> {
+        Ok(self.restore_bundle(text, opts)?.1)
+    }
+
+    /// Restored string (original whitespace kept) plus per-word labels.
+    pub(crate) fn restore_bundle(
+        &self,
+        text: &str,
+        opts: RestoreOpts,
+    ) -> Result<(String, Vec<RestoredWord>)> {
         if text.len() > MAX_RESTORE_BYTES {
             return Err(Error::model(format!(
                 "input larger than {MAX_RESTORE_BYTES} bytes"
             )));
         }
         if text.trim().is_empty() {
-            return Ok(Vec::new());
+            return Ok((text.to_string(), Vec::new()));
         }
-        restore::restore_words(&self.model, &self.tokenizer, text, opts)
+        let (words, dropped) = restore::restore_parts(&self.model, &self.tokenizer, text, opts)?;
+        if words.is_empty() && dropped.is_empty() {
+            return Ok((text.to_string(), words));
+        }
+        let out = restore::render(text, &words, &dropped)?;
+        Ok((out, words))
     }
 
     /// Like [`restore`](Self::restore), but on inference failure returns `text` unchanged.
@@ -70,13 +80,8 @@ impl Punctuator {
 
     #[cfg(test)]
     pub(crate) fn debug_logits(&self, text: &str) -> Result<crate::tensor::Tensor> {
-        let words: Vec<String> = self
-            .tokenizer
-            .split_word_spans(text)
-            .into_iter()
-            .map(|w| w.text)
-            .collect();
-        let (ids, mask, _) = self.tokenizer.encode_words(&words, true).into_parts();
+        let spans = self.tokenizer.split_word_spans(text);
+        let (ids, mask, _) = self.tokenizer.encode_words(&spans, true).into_parts();
         let tt = vec![0u32; ids.len()];
         self.model.forward(&ids, &tt, &mask)
     }

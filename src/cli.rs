@@ -4,7 +4,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 use crate::limits::MAX_RESTORE_BYTES;
-use crate::{Punctuator, RestoreOpts, RestoredWord, default_model_dir, restore::join_words};
+use crate::{Punctuator, RestoreOpts, RestoredWord, default_model_dir};
 
 mod args;
 mod capped;
@@ -212,15 +212,8 @@ fn handle(
     if text.trim().is_empty() {
         return Err((id, "text is empty".to_string()));
     }
-    match punct.restore_words_with(text, opts) {
-        Ok(words) => {
-            let out = if words.is_empty() {
-                text.to_string()
-            } else {
-                join_words(&words)
-            };
-            Ok((id, out, words))
-        }
+    match punct.restore_bundle(text, opts) {
+        Ok((out, words)) => Ok((id, out, words)),
         Err(_) if lossy => Ok((id, text.to_string(), Vec::new())),
         Err(e) => Err((id, e.to_string())),
     }

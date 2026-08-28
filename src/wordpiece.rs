@@ -37,6 +37,12 @@ pub(crate) struct WordSpan {
     pub end: usize,
 }
 
+impl AsRef<str> for WordSpan {
+    fn as_ref(&self) -> &str {
+        &self.text
+    }
+}
+
 pub(crate) struct Encoding {
     ids: Vec<u32>,
     attention_mask: Vec<u32>,
@@ -237,7 +243,11 @@ impl Tokenizer {
         words
     }
 
-    pub(crate) fn encode_words(&self, words: &[String], add_special_tokens: bool) -> Encoding {
+    pub(crate) fn encode_words<S: AsRef<str>>(
+        &self,
+        words: &[S],
+        add_special_tokens: bool,
+    ) -> Encoding {
         let mut ids: Vec<u32> = Vec::new();
         let mut word_ids: Vec<Option<u32>> = Vec::new();
 
@@ -247,7 +257,7 @@ impl Tokenizer {
         }
 
         for (i, word) in words.iter().enumerate() {
-            self.push_word(word, &mut ids);
+            self.push_word(word.as_ref(), &mut ids);
             word_ids.resize(ids.len(), Some(i as u32));
         }
 

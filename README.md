@@ -76,8 +76,9 @@ let words = p.restore_words("привет как дела")?;
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
 original string instead. `restore_words` keeps per-word `label` and softmax
-`score` (not calibrated). Output is space-joined words (newlines/tabs are
-not preserved). Inputs longer than 512 WordPiece tokens (or the checkpoint
+`score` (not calibrated). Output is spliced into the original string
+(newlines, tabs, and hyphens are preserved; `--strip-punct` deletes those
+punctuation spans). Inputs longer than 512 WordPiece tokens (or the checkpoint
 `max_position_embeddings` if smaller) are split on word boundaries with a
 64-token overlap. The small checkpoint allows 2048 positions; the default
 512 window is a speed choice, not bit-identical to a full-length HuggingFace

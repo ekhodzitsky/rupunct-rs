@@ -72,7 +72,8 @@ fn restore_opts_resolve_clamps() {
 #[test]
 fn pack_windows_empty() {
     let (_tmp, tok) = tokenizer();
-    assert!(pack_windows(&tok, &[], 8, 2).is_empty());
+    let empty: [String; 0] = [];
+    assert!(pack_windows(&tok, &empty, 8, 2).is_empty());
 }
 
 #[test]

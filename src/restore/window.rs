@@ -9,9 +9,9 @@ pub(crate) struct Window {
     pub skip: usize,
 }
 
-pub(crate) fn pack_windows(
+pub(crate) fn pack_windows<S: AsRef<str>>(
     tokenizer: &Tokenizer,
-    words: &[String],
+    words: &[S],
     max_pos: usize,
     overlap_tokens: usize,
 ) -> Vec<Window> {
@@ -21,7 +21,7 @@ pub(crate) fn pack_windows(
     let specials = tokenizer.special_token_count(true);
     let counts: Vec<usize> = words
         .iter()
-        .map(|w| tokenizer.word_token_count(w))
+        .map(|w| tokenizer.word_token_count(w.as_ref()))
         .collect();
     let mut windows = Vec::new();
     let mut committed = 0usize;

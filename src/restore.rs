@@ -1,13 +1,15 @@
 //! Word-aligned restore with BERT windowing.
 
+mod splice;
 mod window;
 
 use crate::bert::BertForTokenClassification;
 use crate::error::{Error, Result};
-use crate::labels::{argmax_softmax, first_subword_preds, process_token};
+use crate::labels::{WordPred, argmax_softmax, first_subword_preds, process_token};
 use crate::limits::{MAX_RESTORE_BYTES, MIN_POSITIONS};
 use crate::unicode::is_bert_punc;
 use crate::wordpiece::{Tokenizer, WordSpan};
+use splice::{Edit, splice};
 use window::{fit_seq, pack_windows};
 
 #[cfg(test)]
@@ -76,47 +78,68 @@ pub struct RestoredWord {
     pub end: usize,
 }
 
-pub(crate) fn join_words(words: &[RestoredWord]) -> String {
-    let mut out = String::new();
+pub(crate) fn render(
+    original: &str,
+    words: &[RestoredWord],
+    dropped: &[(usize, usize)],
+) -> Result<String> {
+    let mut edits: Vec<Edit> = Vec::with_capacity(words.len() + dropped.len());
     for w in words {
-        if !out.is_empty() {
-            out.push(' ');
-        }
-        out.push_str(&w.text);
+        edits.push(Edit {
+            start: w.start,
+            end: w.end,
+            text: w.text.clone(),
+        });
     }
-    out.trim().to_string()
+    for &(start, end) in dropped {
+        edits.push(Edit {
+            start,
+            end,
+            text: String::new(),
+        });
+    }
+    splice(original, &mut edits)
 }
 
-pub(crate) fn restore_words(
+pub(crate) type DroppedSpans = Vec<(usize, usize)>;
+
+pub(crate) fn restore_parts(
     model: &BertForTokenClassification,
     tokenizer: &Tokenizer,
     text: &str,
     opts: RestoreOpts,
-) -> Result<Vec<RestoredWord>> {
+) -> Result<(Vec<RestoredWord>, DroppedSpans)> {
     if text.len() > MAX_RESTORE_BYTES {
         return Err(Error::model(format!(
             "input larger than {MAX_RESTORE_BYTES} bytes"
         )));
     }
     let mut spans = tokenizer.split_word_spans(text);
-    if opts.strip_punct {
-        spans = strip_isolated_punct(spans);
-    }
+    let dropped = if opts.strip_punct {
+        let (kept, drop) = strip_isolated_punct(spans);
+        spans = kept;
+        drop
+    } else {
+        Vec::new()
+    };
     if opts.lowercase {
         for w in &mut spans {
             w.text = w.text.to_lowercase();
         }
     }
     if spans.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), dropped));
     }
-    let words: Vec<String> = spans.iter().map(|s| s.text.clone()).collect();
     let (window, overlap) = opts.resolve(model.max_position_embeddings())?;
-    let windows = pack_windows(tokenizer, &words, window, overlap);
+    let windows = pack_windows(tokenizer, &spans, window, overlap);
     let default_lid = model.default_label();
-    let mut preds = Vec::with_capacity(words.len());
+    let missing = WordPred {
+        label: default_lid,
+        score: 0.0,
+    };
+    let mut best = vec![None; spans.len()];
     for w in &windows {
-        let slice = &words[w.start..w.end];
+        let slice = &spans[w.start..w.end];
         let (mut ids, mut mask, mut word_ids) = tokenizer.encode_words(slice, true).into_parts();
         fit_seq(&mut ids, &mut mask, &mut word_ids, window);
         let token_type_ids = vec![0u32; ids.len()];
@@ -128,20 +151,19 @@ pub(crate) fn restore_words(
             .map(|t| argmax_softmax(&flat[t * nlab..(t + 1) * nlab]))
             .collect();
         let window_preds = first_subword_preds(&word_ids, &per_token, slice.len(), default_lid);
-        preds.extend(window_preds.into_iter().skip(w.skip));
-    }
-
-    if preds.len() != words.len() {
-        return Err(Error::model(format!(
-            "label count {} != word count {}",
-            preds.len(),
-            words.len()
-        )));
+        for (i, pred) in window_preds.into_iter().enumerate() {
+            let gi = w.start + i;
+            if gi >= best.len() {
+                continue;
+            }
+            merge_pred(&mut best[gi], pred);
+        }
     }
 
     let id2 = model.id2label();
     let mut out = Vec::with_capacity(spans.len());
-    for (span, pred) in spans.into_iter().zip(preds.iter()) {
+    for (span, slot) in spans.into_iter().zip(best.into_iter()) {
+        let pred = slot.unwrap_or(missing);
         let label = id2.get(pred.label).map(String::as_str).unwrap_or("LOWER_O");
         let rendered = process_token(&span.text, label);
         out.push(RestoredWord {
@@ -153,7 +175,15 @@ pub(crate) fn restore_words(
             end: span.end,
         });
     }
-    Ok(out)
+    Ok((out, dropped))
+}
+
+fn merge_pred(slot: &mut Option<WordPred>, pred: WordPred) {
+    match slot {
+        None => *slot = Some(pred),
+        Some(old) if pred.score > old.score => *slot = Some(pred),
+        _ => {}
+    }
 }
 
 fn is_punct_word(w: &str) -> bool {
@@ -164,14 +194,18 @@ fn is_ascii_digits(w: &str) -> bool {
     !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Drop isolated punctuation, but keep `-` between words and `.` between digits.
-fn strip_isolated_punct(spans: Vec<WordSpan>) -> Vec<WordSpan> {
+fn strip_isolated_punct(spans: Vec<WordSpan>) -> (Vec<WordSpan>, Vec<(usize, usize)>) {
     let drop: Vec<bool> = (0..spans.len()).map(|i| drop_punct_at(&spans, i)).collect();
-    spans
-        .into_iter()
-        .zip(drop)
-        .filter_map(|(s, d)| if d { None } else { Some(s) })
-        .collect()
+    let mut kept = Vec::new();
+    let mut dropped = Vec::new();
+    for (s, d) in spans.into_iter().zip(drop) {
+        if d {
+            dropped.push((s.start, s.end));
+        } else {
+            kept.push(s);
+        }
+    }
+    (kept, dropped)
 }
 
 fn drop_punct_at(spans: &[WordSpan], i: usize) -> bool {

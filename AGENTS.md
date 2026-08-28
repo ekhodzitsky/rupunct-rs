@@ -44,9 +44,9 @@ in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Overlap is
-shrunk so each window commits at least one new word. Output is space-joined
-words (newlines/tabs are not preserved). `--strip-punct` /
-`RestoreOpts.strip_punct` drops isolated punctuation tokens.
+shrunk so each window commits at least one new word. Output is spliced into
+the original string (newlines/tabs/hyphens stay). `--strip-punct` /
+`RestoreOpts.strip_punct` deletes isolated punctuation spans.
 `--lowercase` / `RestoreOpts.lowercase` lowercases words before encode.
 JSONL success frames include `words` (`word` / `text` / `label` / `score` /
 `start` / `end` byte offsets). `Punctuator::restore_words` is the library

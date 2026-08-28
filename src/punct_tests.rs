@@ -163,6 +163,7 @@ fn strip_punct_drops_isolated_punctuation() {
         strip_punct: true,
         ..crate::RestoreOpts::default()
     };
+    // comma span deleted; the following space remains
     assert_eq!(p.restore_with("привет, мир", opts).unwrap(), "привет мир");
     let words = p.restore_words_with("привет, мир", opts).unwrap();
     assert_eq!(
@@ -185,6 +186,15 @@ fn strip_punct_keeps_hyphen_and_decimal_dot() {
     assert!(surface.contains(&"-"), "{surface:?}");
     assert!(surface.contains(&"."), "{surface:?}");
     assert!(!surface.contains(&","));
+    assert_eq!(p.restore_with("кто-то", opts).unwrap(), "кто-то");
+}
+
+#[test]
+fn restore_preserves_newlines() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_tiny_model(tmp.path(), &TinySpec::default()).unwrap();
+    let p = Punctuator::load(tmp.path()).unwrap();
+    assert_eq!(p.restore("привет\nмир").unwrap(), "привет\nмир");
 }
 
 #[test]

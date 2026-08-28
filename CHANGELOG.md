@@ -5,6 +5,18 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-28
+
+### Changed
+
+- `restore` / CLI / JSONL `text` splice into the original string: newlines,
+  tabs, and hyphens stay where they were. `--strip-punct` deletes those
+  spans instead of leaving a hole that `join(' ')` used to hide.
+- Overlapping restore windows keep the higher-softmax label instead of
+  always taking the first-commit window.
+- `scripts/hf-parity.py` compares a built `rupunct` to the HuggingFace
+  pipeline when transformers is installed (not run in CI).
+
 ## [0.9.0] - 2026-08-28
 
 ### Added
