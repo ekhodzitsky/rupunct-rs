@@ -87,9 +87,9 @@ pub fn gemm_row_x_col(
     beta: f32,
     dst: &mut [f32],
 ) {
-    debug_assert_eq!(lhs.len(), m * k);
-    debug_assert_eq!(w_col.len(), k * n);
-    debug_assert_eq!(dst.len(), m * n);
+    assert_eq!(lhs.len(), m * k);
+    assert_eq!(w_col.len(), k * n);
+    assert_eq!(dst.len(), m * n);
 
     #[cfg(target_os = "macos")]
     {
@@ -138,9 +138,9 @@ pub fn gemm_row_x_col(
 /// Row-major `c[m,n] = a[m,k] @ b[k,n]`.
 #[cfg(test)]
 pub fn gemm_nn(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    debug_assert_eq!(a.len(), m * k);
-    debug_assert_eq!(b.len(), k * n);
-    debug_assert_eq!(c.len(), m * n);
+    assert_eq!(a.len(), m * k);
+    assert_eq!(b.len(), k * n);
+    assert_eq!(c.len(), m * n);
 
     #[cfg(target_os = "macos")]
     {
@@ -198,15 +198,15 @@ pub fn gemm_scores_strided(
     off: usize,
     scores: &mut [f32],
 ) {
-    debug_assert_eq!(scores.len(), t * t);
-    debug_assert!(ld >= d && off + d <= ld);
-    debug_assert!(
+    assert_eq!(scores.len(), t * t);
+    assert!(ld >= d && off + d <= ld);
+    assert!(
         q.len()
             >= t.saturating_sub(1)
                 .saturating_mul(ld)
                 .saturating_add(off + d)
     );
-    debug_assert!(
+    assert!(
         k.len()
             >= t.saturating_sub(1)
                 .saturating_mul(ld)
@@ -266,15 +266,15 @@ pub fn gemm_attn_v_strided(
     ld: usize,
     off: usize,
 ) {
-    debug_assert_eq!(scores.len(), t * t);
-    debug_assert!(ld >= d && off + d <= ld);
-    debug_assert!(
+    assert_eq!(scores.len(), t * t);
+    assert!(ld >= d && off + d <= ld);
+    assert!(
         v.len()
             >= t.saturating_sub(1)
                 .saturating_mul(ld)
                 .saturating_add(off + d)
     );
-    debug_assert!(
+    assert!(
         out.len()
             >= t.saturating_sub(1)
                 .saturating_mul(ld)

@@ -35,6 +35,8 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
     let mut model_dir: Option<PathBuf> = None;
     let mut jsonl = false;
     let mut lossy = false;
+    let mut strip_punct = false;
+    let mut lowercase = false;
     let mut max_seq: Option<usize> = None;
     let mut overlap: Option<usize> = None;
     let mut complete: Option<String> = None;
@@ -86,6 +88,14 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
                 reject_inline(flag, inline)?;
                 set_flag(&mut lossy, flag)?;
             }
+            "--strip-punct" => {
+                reject_inline(flag, inline)?;
+                set_flag(&mut strip_punct, flag)?;
+            }
+            "--lowercase" => {
+                reject_inline(flag, inline)?;
+                set_flag(&mut lowercase, flag)?;
+            }
             "--max-seq" => {
                 if max_seq.is_some() {
                     return Err("multiple --max-seq options".into());
@@ -118,6 +128,8 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
             || positional.is_some()
             || jsonl
             || lossy
+            || strip_punct
+            || lowercase
             || max_seq.is_some()
             || overlap.is_some()
             || model_dir.is_some()
@@ -137,6 +149,8 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
     let opts = RestoreOpts {
         max_window_tokens: window,
         overlap_tokens: ov,
+        strip_punct,
+        lowercase,
     };
 
     let sources = usize::from(text.is_some())
@@ -322,6 +336,7 @@ mod tests {
         assert!(parse(&a(&["--jsonl", "--jsonl"]), false).is_err());
         assert!(parse(&a(&["--lossy", "--lossy", "--text", "x"]), true).is_err());
         assert!(parse(&a(&["--complete", "bash", "--lossy"]), true).is_err());
+        assert!(parse(&a(&["--complete", "bash", "--strip-punct"]), true).is_err());
         assert!(parse(&a(&["--text=-"]), true).is_ok());
     }
 

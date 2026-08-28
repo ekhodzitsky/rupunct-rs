@@ -83,11 +83,20 @@ impl Attention {
         let k = self.key.forward(hidden_states)?;
         let v = self.value.forward(hidden_states)?;
         let scale = 1.0 / (self.head_dim as f32).sqrt();
-        let mut context = vec![0.0f32; seq * self.hidden];
+        if i32::try_from(seq).is_err() {
+            return Err(Error::model("sequence length does not fit i32 GEMM"));
+        }
+        let n_ctx = seq
+            .checked_mul(self.hidden)
+            .ok_or_else(|| Error::model("seq*hidden overflow"))?;
+        let n_scores = seq
+            .checked_mul(seq)
+            .ok_or_else(|| Error::model("seq*seq overflow"))?;
+        let mut context = vec![0.0f32; n_ctx];
         let qs = q.as_slice();
         let ks = k.as_slice();
         let vs = v.as_slice();
-        let mut scores = vec![0.0f32; seq * seq];
+        let mut scores = vec![0.0f32; n_scores];
 
         for h in 0..self.n_heads {
             let off = h * self.head_dim;
@@ -173,11 +182,14 @@ impl FeedForward {
                 config.layer_norm_eps,
             )?,
         };
-        if ff.intermediate.out_dim() != config.intermediate_size {
+        if ff.intermediate.in_dim() != config.hidden_size
+            || ff.intermediate.out_dim() != config.intermediate_size
+            || ff.output.in_dim() != config.intermediate_size
+            || ff.output.out_dim() != config.hidden_size
+        {
             return Err(crate::error::Error::config(format!(
-                "intermediate out {} != intermediate_size {}",
-                ff.intermediate.out_dim(),
-                config.intermediate_size
+                "{prefix}: FFN must be [{1}, {0}] then [{0}, {1}]",
+                config.hidden_size, config.intermediate_size
             )));
         }
         Ok(ff)

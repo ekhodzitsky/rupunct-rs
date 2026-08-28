@@ -33,12 +33,13 @@ impl Tokenizer {
     }
 
     pub(super) fn normalize(&self, text: &str) -> String {
-        let (clean_text, handle_chinese_chars) = match &self.normalizer {
+        let (clean_text, handle_chinese_chars, lowercase) = match &self.normalizer {
             Normalizer::None => return text.to_string(),
             Normalizer::Bert {
                 clean_text,
                 handle_chinese_chars,
-            } => (*clean_text, *handle_chinese_chars),
+                lowercase,
+            } => (*clean_text, *handle_chinese_chars, *lowercase),
         };
 
         let mut out = String::with_capacity(text.len());
@@ -64,6 +65,9 @@ impl Tokenizer {
                 }
             }
             out = spaced;
+        }
+        if lowercase {
+            out = out.to_lowercase();
         }
         out
     }

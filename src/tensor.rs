@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::sync::Arc;
 
+#[cfg(target_endian = "big")]
+compile_error!("F32 mmap views require little-endian");
+
 use memmap2::Mmap;
 
 use crate::error::{TensorError, TensorResult};
@@ -193,7 +196,10 @@ impl Tensor {
                 "weight in_dim {k2} != x last {k}"
             )));
         }
-        let mut out = vec![0.0f32; m * n];
+        let n_out = m
+            .checked_mul(n)
+            .ok_or_else(|| TensorError::shape("m*n overflow"))?;
+        let mut out = vec![0.0f32; n_out];
         matmul_f32_bt(m, k, n, self.as_slice(), weight.as_slice(), &mut out)?;
         Tensor::from_vec(out, vec![m, n])
     }

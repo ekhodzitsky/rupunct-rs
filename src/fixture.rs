@@ -56,6 +56,9 @@ pub struct TinySpec {
     pub vocab: usize,
     pub type_vocab: usize,
     pub bias_label: usize,
+    /// When false, classifier bias is zero and weights are not downscaled so
+    /// encoder hidden states actually move the argmax.
+    pub peak_classifier_bias: bool,
 }
 
 impl Default for TinySpec {
@@ -69,6 +72,7 @@ impl Default for TinySpec {
             vocab: 256,
             type_vocab: 2,
             bias_label: LABEL_LOWER_O,
+            peak_classifier_bias: true,
         }
     }
 }
@@ -290,12 +294,15 @@ fn write_weights(dir: &Path, spec: &TinySpec) -> Result<()> {
     }
 
     let mut classifier_w = fill(nlab * h, 99);
-    for x in classifier_w.iter_mut() {
-        *x *= 0.001;
-    }
-    let mut classifier_b = vec![-100.0f32; nlab];
-    if spec.bias_label < nlab {
-        classifier_b[spec.bias_label] = 10.0;
+    let mut classifier_b = vec![0.0f32; nlab];
+    if spec.peak_classifier_bias {
+        for x in classifier_w.iter_mut() {
+            *x *= 0.001;
+        }
+        classifier_b = vec![-100.0f32; nlab];
+        if spec.bias_label < nlab {
+            classifier_b[spec.bias_label] = 10.0;
+        }
     }
     push(
         &mut tensors,

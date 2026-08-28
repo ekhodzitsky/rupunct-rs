@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::error::{TensorError, TensorResult};
+use crate::limits::MAX_MODEL_BYTES;
 use crate::st::{self, Dtype};
 use crate::tensor::{MappedFile, Tensor};
 
@@ -23,6 +24,11 @@ pub(crate) fn load_safetensors_file(path: &Path) -> TensorResult<WeightSet> {
     let file = std::fs::File::open(path)
         .map_err(|e| TensorError::msg(format!("open {}: {e}", path.display())))?;
     let mapped = MappedFile::open(file)?;
+    if mapped.len() as u64 > MAX_MODEL_BYTES {
+        return Err(TensorError::msg(format!(
+            "model larger than {MAX_MODEL_BYTES} bytes"
+        )));
+    }
     let bytes = mapped.as_bytes();
     let index = st::parse_index(bytes)?;
     let mut out = WeightSet::default();

@@ -49,7 +49,11 @@ pub(crate) fn gather_rows(table: &Tensor, ids: &[u32]) -> Result<Tensor> {
     let rows = table.dim(0)?;
     let h = table.dim(1)?;
     let src = table.as_slice();
-    let mut out = vec![0.0f32; ids.len() * h];
+    let n = ids
+        .len()
+        .checked_mul(h)
+        .ok_or_else(|| Error::model("gather overflow"))?;
+    let mut out = vec![0.0f32; n];
     for (i, &id) in ids.iter().enumerate() {
         let id = id as usize;
         if id >= rows {
@@ -61,7 +65,7 @@ pub(crate) fn gather_rows(table: &Tensor, ids: &[u32]) -> Result<Tensor> {
 }
 
 pub(crate) fn add_inplace(dst: &mut [f32], src: &[f32]) {
-    debug_assert_eq!(dst.len(), src.len());
+    assert_eq!(dst.len(), src.len());
     for (d, &s) in dst.iter_mut().zip(src.iter()) {
         *d += s;
     }

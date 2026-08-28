@@ -1,12 +1,24 @@
 #!/bin/sh
-# Install a pinned RUPunct_small checkpoint into $RUPUNCT_MODEL or ~/.rupunct/punct.
+# Install a pinned RUPunct checkpoint into $RUPUNCT_MODEL or ~/.rupunct/punct.
 # Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
 # with torch + safetensors.
+#
+# Default: RUPunct/RUPunct_small at the pinned revision (SHA-256 verified).
+# Optional: RUPUNCT_REPO=RUPunct/RUPunct_big (same 33 labels, BERT-base; SHA skipped).
 set -eu
 
+PINNED_REPO="RUPunct/RUPunct_small"
 # Pin: RUPunct/RUPunct_small @ 2024-05-01 (config hidden=312, max_pos=2048).
 PINNED_REVISION="97aa9196b313e931424a5401fa42bc69dd15acd9"
-REVISION="${RUPUNCT_REVISION:-$PINNED_REVISION}"
+REPO="${RUPUNCT_REPO:-$PINNED_REPO}"
+if [ -n "${RUPUNCT_REVISION:-}" ]; then
+  REVISION="$RUPUNCT_REVISION"
+elif [ "$REPO" = "$PINNED_REPO" ]; then
+  REVISION="$PINNED_REVISION"
+else
+  # Do not reuse the small commit SHA on another repo (it 404s).
+  REVISION="main"
+fi
 DEST="${RUPUNCT_MODEL:-${HOME:?HOME unset}/.rupunct/punct}"
 mkdir -p "$DEST"
 
@@ -18,17 +30,17 @@ elif command -v huggingface-cli >/dev/null 2>&1; then
 else
   echo "fetch-model: hf / huggingface-cli not on PATH" >&2
   echo "  pip install -U huggingface_hub" >&2
-  echo "  then: hf download RUPunct/RUPunct_small --revision $REVISION --local-dir $DEST" >&2
+  echo "  then: hf download $REPO --revision $REVISION --local-dir $DEST" >&2
   exit 1
 fi
 
 if [ "$HF_BIN" = hf ]; then
-  hf download RUPunct/RUPunct_small --revision "$REVISION" --local-dir "$DEST"
+  hf download "$REPO" --revision "$REVISION" --local-dir "$DEST"
 else
-  huggingface-cli download RUPunct/RUPunct_small --revision "$REVISION" --local-dir "$DEST"
+  huggingface-cli download "$REPO" --revision "$REVISION" --local-dir "$DEST"
 fi
 
-if [ ! -f "$DEST/model.safetensors" ] && [ -f "$DEST/pytorch_model.bin" ]; then
+convert_bin() {
   if ! command -v python3 >/dev/null 2>&1; then
     echo "fetch-model: python3 required to convert pytorch_model.bin" >&2
     exit 1
@@ -52,6 +64,10 @@ tensors = {k: v.contiguous().cpu() for k, v in state.items()}
 save_file(tensors, str(out))
 print(f"wrote {out}")
 PY
+}
+
+if [ ! -f "$DEST/model.safetensors" ] && [ -f "$DEST/pytorch_model.bin" ]; then
+  convert_bin
 fi
 
 check_sha256() {
@@ -73,8 +89,13 @@ for f in model.safetensors tokenizer.json config.json; do
   fi
 done
 
-if [ "$REVISION" != "$PINNED_REVISION" ]; then
-  echo "fetch-model: skipping SHA-256 (RUPUNCT_REVISION=$REVISION != pinned $PINNED_REVISION)" >&2
+PINNED=0
+if [ "$REPO" = "$PINNED_REPO" ] && [ "$REVISION" = "$PINNED_REVISION" ]; then
+  PINNED=1
+fi
+
+if [ "$PINNED" -ne 1 ]; then
+  echo "fetch-model: skipping SHA-256 (repo=$REPO revision=$REVISION; hashes are for $PINNED_REPO@$PINNED_REVISION)" >&2
 else
   # Content hashes at RUPunct/RUPunct_small @ $PINNED_REVISION
   check_sha256 "$DEST/config.json" "ec5503b1b544ee19563895c7c73884a4ec94b52b17eda172c11dcdc0eb924f03"
@@ -82,5 +103,15 @@ else
   if [ -f "$DEST/pytorch_model.bin" ]; then
     check_sha256 "$DEST/pytorch_model.bin" "5b05a696d0a9629e0938852e221abcd84cc75ab67a4445fb0b4ea40630dd6b59"
   fi
+  if ! check_sha256 "$DEST/model.safetensors" "1b9d9c252616e79d44eb48883200223e9e77c333a2fa481f618ea9fd32f73c97"; then
+    if [ -f "$DEST/pytorch_model.bin" ]; then
+      echo "fetch-model: model.safetensors hash mismatch; reconverting from pytorch_model.bin" >&2
+      convert_bin
+      check_sha256 "$DEST/model.safetensors" "1b9d9c252616e79d44eb48883200223e9e77c333a2fa481f618ea9fd32f73c97"
+    else
+      echo "fetch-model: model.safetensors hash mismatch and no pytorch_model.bin to rebuild" >&2
+      exit 1
+    fi
+  fi
 fi
-echo "ok $DEST (revision $REVISION)"
+echo "ok $DEST ($REPO revision $REVISION)"

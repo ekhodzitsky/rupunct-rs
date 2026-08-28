@@ -201,3 +201,35 @@ fn oneshot_lossy_flag() {
     assert!(r.is_ok(), "{r:?}");
     assert_eq!(out.trim(), "привет");
 }
+
+#[test]
+fn jsonl_includes_words() {
+    let dir = tiny_dir();
+    let stdin = "{\"text\":\"привет мир\"}\n";
+    let (r, out, _) = run_capture(&["--model-dir", dir.path().to_str().unwrap()], stdin, false);
+    assert!(r.is_ok(), "{r:?}");
+    let line = out.lines().nth(1).unwrap();
+    assert!(line.contains(r#""words":"#), "{line}");
+    assert!(line.contains(r#""label":"#), "{line}");
+    assert!(line.contains(r#""score":"#), "{line}");
+}
+
+#[test]
+fn strip_punct_flag_parses() {
+    let dir = tiny_dir();
+    let d = dir.path().to_str().unwrap();
+    let (r, out, _) = run_capture(
+        &[
+            "-m",
+            d,
+            "--strip-punct",
+            "--lowercase",
+            "--text",
+            "Привет, мир",
+        ],
+        "",
+        true,
+    );
+    assert!(r.is_ok(), "{r:?}");
+    assert_eq!(out.trim(), "привет мир");
+}

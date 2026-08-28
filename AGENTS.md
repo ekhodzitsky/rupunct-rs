@@ -20,7 +20,7 @@ JSONL (stdin/stdout, one object per line; default when stdin is not a TTY):
 ```text
 {"ready": true}
 → {"text": "…"} / {"id":1,"text":"…"}
-← {"text": "…"} / {"id":1,"error":"…"}
+← {"text": "…","words":[…]} / {"id":1,"error":"…"}
 ```
 
 Request-level failures are `{"error": "…"}` frames; the loop continues.
@@ -45,7 +45,12 @@ in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Overlap is
 shrunk so each window commits at least one new word. Output is space-joined
-words (newlines/tabs are not preserved).
+words (newlines/tabs are not preserved). `--strip-punct` /
+`RestoreOpts.strip_punct` drops isolated punctuation tokens.
+`--lowercase` / `RestoreOpts.lowercase` lowercases words before encode.
+JSONL success frames include `words` (`word` / `text` / `label` / `score`).
+`Punctuator::restore_words` is the library form. Compatible with
+`RUPunct/RUPunct_big` (same 33 labels) via `RUPUNCT_REPO`.
 
 Direct crate deps stay tiny: `serde_json`, `memmap2`, and `gemm` only on
 non-macOS (Accelerate on macOS). Safetensors and `tokenizer.json` are parsed

@@ -68,19 +68,17 @@ pub(crate) fn matmul_f32_bt(
             n * k
         )));
     }
-    if a.len() != m * k {
-        return Err(TensorError::shape(format!(
-            "a len {} != m*k {}",
-            a.len(),
-            m * k
-        )));
+    let mk = m
+        .checked_mul(k)
+        .ok_or_else(|| TensorError::shape("m*k overflow"))?;
+    let mn = m
+        .checked_mul(n)
+        .ok_or_else(|| TensorError::shape("m*n overflow"))?;
+    if a.len() != mk {
+        return Err(TensorError::shape(format!("a len {} != m*k {mk}", a.len())));
     }
-    if c.len() != m * n {
-        return Err(TensorError::shape(format!(
-            "c len {} != m*n {}",
-            c.len(),
-            m * n
-        )));
+    if c.len() != mn {
+        return Err(TensorError::shape(format!("c len {} != m*n {mn}", c.len())));
     }
     gemm_nt_weight(m, k, n, a, b_t, c);
     Ok(())
@@ -112,7 +110,10 @@ pub(crate) fn matmul_f32_nt_strided(
         .saturating_sub(1)
         .saturating_mul(ld)
         .saturating_add(off + d);
-    if ld < d || off + d > ld || q.len() < need || k.len() < need || scores.len() != t * t {
+    let tt = t
+        .checked_mul(t)
+        .ok_or_else(|| TensorError::shape("t*t overflow"))?;
+    if ld < d || off + d > ld || q.len() < need || k.len() < need || scores.len() != tt {
         return Err(TensorError::shape("matmul_f32_nt_strided size mismatch"));
     }
     crate::blas::gemm_scores_strided(t, d, q, k, ld, off, scores);
@@ -145,7 +146,10 @@ pub(crate) fn matmul_f32_nn_attn_strided(
         .saturating_sub(1)
         .saturating_mul(ld)
         .saturating_add(off + d);
-    if ld < d || off + d > ld || v.len() < need || out.len() < need || scores.len() != t * t {
+    let tt = t
+        .checked_mul(t)
+        .ok_or_else(|| TensorError::shape("t*t overflow"))?;
+    if ld < d || off + d > ld || v.len() < need || out.len() < need || scores.len() != tt {
         return Err(TensorError::shape(
             "matmul_f32_nn_attn_strided size mismatch",
         ));

@@ -1,7 +1,7 @@
 //! In-tree WordPiece tokenizer for RUPunct BERT checkpoints.
 //!
 //! Supported scheme: `BertNormalizer { clean_text, handle_chinese_chars,
-//! strip_accents: false, lowercase: false }` + `BertPreTokenizer` + greedy
+//! strip_accents: false, lowercase }` + `BertPreTokenizer` + greedy
 //! WordPiece (`##` continuation, `[UNK]` fallback, 100-char word cap) + the
 //! `[CLS] A [SEP]` template. Anything outside this scheme fails at load.
 
@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{Error, Result};
+use crate::limits::{MAX_ADDED_TOKENS, MAX_TOKENIZER_BYTES, MAX_WORD_CHARS, read_capped_text};
 use crate::tokenizer_json::{
     Normalizer, TokenizerFile, parse_normalizer, parse_post_processor, parse_pre_tokenizer,
 };
@@ -58,7 +59,10 @@ impl Encoding {
 
 impl Tokenizer {
     pub(crate) fn from_file(path: &Path) -> Result<Self> {
-        let raw = std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
+        let raw = match read_capped_text(path, MAX_TOKENIZER_BYTES) {
+            Err(Error::Config(m)) => return Err(Error::tokenizer(m)),
+            other => other?,
+        };
         let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
             Error::tokenizer(format!(
                 "failed to parse tokenizer file {}: {e}",
@@ -112,6 +116,20 @@ impl Tokenizer {
         let bert_pre_tokenizer = parse_pre_tokenizer(file.pre_tokenizer)?;
         let (cls, sep) = parse_post_processor(file.post_processor)?;
 
+        if file.added_tokens.len() > MAX_ADDED_TOKENS {
+            return Err(Error::tokenizer(format!(
+                "too many added_tokens ({}, max {MAX_ADDED_TOKENS})",
+                file.added_tokens.len()
+            )));
+        }
+        let max_chars = file
+            .model
+            .max_input_chars_per_word
+            .unwrap_or(100)
+            .min(MAX_WORD_CHARS);
+        if max_chars == 0 {
+            return Err(Error::tokenizer("max_input_chars_per_word must be > 0"));
+        }
         let mut added_tokens = Vec::with_capacity(file.added_tokens.len());
         for token in &file.added_tokens {
             if token.content.is_empty() {
@@ -150,7 +168,7 @@ impl Tokenizer {
                 .model
                 .continuing_subword_prefix
                 .unwrap_or_else(|| "##".to_string()),
-            max_input_chars_per_word: file.model.max_input_chars_per_word.unwrap_or(100),
+            max_input_chars_per_word: max_chars,
             normalizer,
             bert_pre_tokenizer,
             added_tokens,

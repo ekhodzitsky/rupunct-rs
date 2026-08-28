@@ -3,7 +3,7 @@
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
-use crate::{Punctuator, RestoreOpts, default_model_dir};
+use crate::{Punctuator, RestoreOpts, RestoredWord, default_model_dir, restore::join_words};
 
 mod args;
 mod capped;
@@ -167,8 +167,9 @@ where
                     continue;
                 }
                 match handle(&punct, &line, cmd.lossy, cmd.opts) {
-                    Ok((id, out)) => {
-                        writeln!(stdout, "{}", json_text(id.as_ref(), &out)).map_err(io_err)?;
+                    Ok((id, out, words)) => {
+                        writeln!(stdout, "{}", json_ok(id.as_ref(), &out, &words))
+                            .map_err(io_err)?;
                     }
                     Err((id, e)) => {
                         writeln!(stdout, "{}", json_error(id.as_ref(), &e)).map_err(io_err)?;
@@ -191,12 +192,15 @@ fn read_all(mut r: impl std::io::Read) -> Result<String, CliError> {
     }
 }
 
+type HandleOk = (Option<serde_json::Value>, String, Vec<RestoredWord>);
+type HandleErr = (Option<serde_json::Value>, String);
+
 fn handle(
     punct: &Punctuator,
     line: &str,
     lossy: bool,
     opts: RestoreOpts,
-) -> Result<(Option<serde_json::Value>, String), (Option<serde_json::Value>, String)> {
+) -> Result<HandleOk, HandleErr> {
     let v: serde_json::Value =
         serde_json::from_str(line).map_err(|_| (None, "JSONL protocol error".to_string()))?;
     let id = v.get("id").cloned();
@@ -207,21 +211,42 @@ fn handle(
     if text.trim().is_empty() {
         return Err((id, "text is empty".to_string()));
     }
-    if lossy {
-        Ok((
-            id,
-            punct
-                .restore_with(text, opts)
-                .unwrap_or_else(|_| text.to_string()),
-        ))
-    } else {
-        punct
-            .restore_with(text, opts)
-            .map(|s| (id.clone(), s))
-            .map_err(|e| (id, e.to_string()))
+    match punct.restore_words_with(text, opts) {
+        Ok(words) => {
+            let out = if words.is_empty() {
+                text.to_string()
+            } else {
+                join_words(&words)
+            };
+            Ok((id, out, words))
+        }
+        Err(_) if lossy => Ok((id, text.to_string(), Vec::new())),
+        Err(e) => Err((id, e.to_string())),
     }
 }
 
+fn json_ok(id: Option<&serde_json::Value>, text: &str, words: &[RestoredWord]) -> String {
+    let mut map = serde_json::Map::new();
+    if let Some(id) = id {
+        map.insert("id".into(), id.clone());
+    }
+    map.insert("text".into(), serde_json::Value::String(text.to_string()));
+    let arr: Vec<serde_json::Value> = words
+        .iter()
+        .map(|w| {
+            serde_json::json!({
+                "word": w.word,
+                "text": w.text,
+                "label": w.label,
+                "score": w.score,
+            })
+        })
+        .collect();
+    map.insert("words".into(), serde_json::Value::Array(arr));
+    serde_json::Value::Object(map).to_string()
+}
+
+#[cfg(test)]
 fn json_text(id: Option<&serde_json::Value>, text: &str) -> String {
     frame(id, "text", text)
 }

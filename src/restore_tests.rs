@@ -57,13 +57,16 @@ fn restore_opts_resolve_clamps() {
     let o = RestoreOpts {
         max_window_tokens: 10_000,
         overlap_tokens: 9_000,
+        ..RestoreOpts::default()
     };
-    assert_eq!(o.resolve(512), (512, 511));
+    assert_eq!(o.resolve(512).unwrap(), (512, 511));
     let o = RestoreOpts {
         max_window_tokens: 1,
         overlap_tokens: 0,
+        ..RestoreOpts::default()
     };
-    assert_eq!(o.resolve(2048), (2, 0));
+    assert_eq!(o.resolve(2048).unwrap(), (3, 0));
+    assert!(o.resolve(2).is_err());
 }
 
 #[test]

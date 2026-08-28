@@ -82,6 +82,16 @@ fn test_argmax_returns_index_of_max() {
 }
 
 #[test]
+fn test_argmax_softmax_is_one_on_one_hot() {
+    let p = argmax_softmax(&[0.0, 10.0, 0.0]);
+    assert_eq!(p.label, 1);
+    assert!((p.score - 1.0).abs() < 1e-3, "score {}", p.score);
+    let p = argmax_softmax(&[]);
+    assert_eq!(p.label, 0);
+    assert_eq!(p.score, 0.0);
+}
+
+#[test]
 fn test_load_id2label_parses_contiguous_map() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cfg = tmp.path().join("config.json");

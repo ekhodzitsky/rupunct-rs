@@ -5,6 +5,40 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-28
+
+### Added
+
+- `Punctuator::restore_words` / `restore_words_with` and `RestoredWord`
+  (`word`, `text`, `label`, softmax `score` of the first subtoken).
+- JSONL success frames include a `words` array (existing `text` is unchanged).
+- `--strip-punct` / `RestoreOpts.strip_punct` drops isolated punctuation
+  tokens so already-punctuated input is not double-marked.
+- `--lowercase` / `RestoreOpts.lowercase` lowercases words before the encoder
+  (ASR-style). Default off (HuggingFace parity).
+- `scripts/fetch-model.sh` SHA-256 of `model.safetensors` (rebuilds from
+  `pytorch_model.bin` on mismatch). `RUPUNCT_REPO=RUPunct/RUPunct_big` downloads
+  that repo at `main` (override with `RUPUNCT_REVISION`; hashes are only for
+  the pinned small revision).
+- `BertNormalizer` `lowercase=true` (needed to load `RUPunct_big`).
+- Library `restore` / `restore_words` reject bodies larger than 8 MiB.
+
+### Changed
+
+- `RestoreOpts::resolve` clamps the window to ≥ 3 (same as `--max-seq`).
+- `config.json` rejects `model_type` other than `bert`, non-absolute
+  `position_embedding_type`, `max_position_embeddings` < 3, non-positive
+  `layer_norm_eps`, and oversized hidden/layer/vocab fields.
+- Tokenizer/config files and the mapped weights have size caps. FFN load
+  checks both linear shapes. GEMM buffers use `checked_mul`; BLAS length
+  checks are on in release builds.
+- CI installs the pinned 1.88 toolchain (matches `rust-toolchain.toml`).
+
+### Fixed
+
+- Whitespace-only and control-only input (normalizer drops the chars) is
+  identity of the original string, not a trimmed leftover.
+
 ## [0.7.0] - 2026-08-28
 
 ### Fixed

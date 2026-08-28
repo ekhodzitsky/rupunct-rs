@@ -14,6 +14,7 @@ mod error;
 mod gelu;
 mod labels;
 mod layer_norm;
+mod limits;
 mod linear;
 mod matmul;
 mod model;
@@ -35,7 +36,7 @@ pub use error::{Error, Result};
 pub use labels::process_token;
 pub use model::{CONFIG_FILE, MODEL_FILE, TOKENIZER_FILE, default_model_dir};
 pub use punct::Punctuator;
-pub use restore::RestoreOpts;
+pub use restore::{RestoreOpts, RestoredWord};
 
 /// Entry point used by the `rupunct` binary. Not part of the library contract.
 #[doc(hidden)]

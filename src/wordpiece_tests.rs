@@ -224,13 +224,15 @@ const GOOD_NORMALIZER: &str = r#"{"type": "BertNormalizer", "clean_text": true,
     "handle_chinese_chars": true, "strip_accents": false, "lowercase": false}"#;
 
 #[test]
-fn test_load_rejects_lowercase_normalizer() {
+fn test_lowercase_normalizer_lowercases_input() {
+    let tmp = tempfile::tempdir().unwrap();
     let norm = r#"{"type": "BertNormalizer", "clean_text": true,
         "handle_chinese_chars": true, "strip_accents": false, "lowercase": true}"#;
-    expect_load_error(
-        &base_json(GOOD_MODEL, norm, "null", "[]"),
-        "lowercase=true is not supported",
-    );
+    let json = base_json(GOOD_MODEL, norm, "null", "[]");
+    let path = tmp.path().join("tok.json");
+    std::fs::write(&path, json).unwrap();
+    let tok = Tokenizer::from_file(&path).unwrap();
+    assert_eq!(tok.split_words("A"), vec!["a"]);
 }
 
 #[test]

@@ -63,26 +63,50 @@ pub fn process_token(token: &str, label: &str) -> String {
     out
 }
 
-pub(crate) fn first_subword_labels(
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct WordPred {
+    pub label: usize,
+    pub score: f32,
+}
+
+pub(crate) fn first_subword_preds(
     word_ids: &[Option<u32>],
-    argmax_per_token: &[usize],
+    per_token: &[WordPred],
     num_words: usize,
     default_label: usize,
-) -> Vec<usize> {
-    let mut labels = vec![default_label; num_words];
+) -> Vec<WordPred> {
+    let missing = WordPred {
+        label: default_label,
+        score: 0.0,
+    };
+    let mut labels = vec![missing; num_words];
     let mut seen = vec![false; num_words];
     for (tok_idx, wid) in word_ids.iter().enumerate() {
         let Some(w) = wid else { continue };
         let w = *w as usize;
         if w < num_words && !seen[w] {
             seen[w] = true;
-            labels[w] = argmax_per_token
-                .get(tok_idx)
-                .copied()
-                .unwrap_or(default_label);
+            labels[w] = per_token.get(tok_idx).copied().unwrap_or(missing);
         }
     }
     labels
+}
+
+#[cfg(test)]
+pub(crate) fn first_subword_labels(
+    word_ids: &[Option<u32>],
+    argmax_per_token: &[usize],
+    num_words: usize,
+    default_label: usize,
+) -> Vec<usize> {
+    let per_token: Vec<WordPred> = argmax_per_token
+        .iter()
+        .map(|&label| WordPred { label, score: 0.0 })
+        .collect();
+    first_subword_preds(word_ids, &per_token, num_words, default_label)
+        .into_iter()
+        .map(|p| p.label)
+        .collect()
 }
 
 /// Index of `LOWER_O`, the identity / missing-word sentinel on RUPunct checkpoints.
@@ -93,7 +117,19 @@ pub(crate) fn lower_o_index(id2label: &[String]) -> Result<usize> {
         .ok_or_else(|| Error::config("id2label missing LOWER_O"))
 }
 
+#[cfg(test)]
 pub(crate) fn argmax(row: &[f32]) -> usize {
+    argmax_softmax(row).label
+}
+
+/// Argmax index and softmax probability of that class.
+pub(crate) fn argmax_softmax(row: &[f32]) -> WordPred {
+    if row.is_empty() {
+        return WordPred {
+            label: 0,
+            score: 0.0,
+        };
+    }
     let mut best = 0usize;
     let mut best_v = f32::NEG_INFINITY;
     for (i, &v) in row.iter().enumerate() {
@@ -102,7 +138,16 @@ pub(crate) fn argmax(row: &[f32]) -> usize {
             best = i;
         }
     }
-    best
+    let mut sum = 0.0f32;
+    for &v in row {
+        sum += (v - best_v).exp();
+    }
+    let score = if sum > 0.0 && sum.is_finite() {
+        (1.0 / sum).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    WordPred { label: best, score }
 }
 
 pub(crate) fn id2label_from_map(

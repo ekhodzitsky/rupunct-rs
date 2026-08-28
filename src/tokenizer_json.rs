@@ -38,6 +38,7 @@ pub(crate) enum Normalizer {
     Bert {
         clean_text: bool,
         handle_chinese_chars: bool,
+        lowercase: bool,
     },
 }
 
@@ -120,11 +121,6 @@ pub(crate) fn parse_normalizer(value: Option<serde_json::Value>) -> Result<Norma
     }
     let lowercase = opt_bool(obj, "lowercase", true)?;
     let strip_accents = opt_bool(obj, "strip_accents", lowercase)?;
-    if lowercase {
-        return Err(Error::tokenizer(
-            "BertNormalizer with lowercase=true is not supported",
-        ));
-    }
     if strip_accents {
         return Err(Error::tokenizer(
             "BertNormalizer with strip_accents=true is not supported",
@@ -133,6 +129,7 @@ pub(crate) fn parse_normalizer(value: Option<serde_json::Value>) -> Result<Norma
     Ok(Normalizer::Bert {
         clean_text: opt_bool(obj, "clean_text", true)?,
         handle_chinese_chars: opt_bool(obj, "handle_chinese_chars", true)?,
+        lowercase,
     })
 }
 
