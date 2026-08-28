@@ -5,6 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- README reports `RUPunct_big` vs small on the in-tree F1 set. Big did not
+  win there. Big `max_position_embeddings` is 512.
+
 ## [0.11.0] - 2026-08-28
 
 ### Added

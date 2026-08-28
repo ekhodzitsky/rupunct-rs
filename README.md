@@ -104,24 +104,30 @@ hyphens, newlines, and tabs; the join does not. Consecutive identical tags are
 **not** merged the way `pipeline(..., aggregation_strategy="first")` groups
 entities.
 
-In-tree F1 (`scripts/f1.py`, 31 gold sentences in `tests/fixtures/f1_gold.json`)
-on the pinned small checkpoint. This is not a published benchmark:
+In-tree F1 (`scripts/f1.py`, 31 gold sentences in `tests/fixtures/f1_gold.json`).
+Not a published benchmark; rare marks (colon: 1 example) are noise.
 
-| split | n | exact match | punct micro-F1 (excl. `O`) |
-|-------|---|-------------|----------------------------|
-| written | 17 | 76% | 0.91 |
-| ASR-style | 14 | 57% | 0.72 |
-| all | 31 | 68% | 0.84 |
+| checkpoint | split | n | exact | punct micro-F1 (excl. `O`) | case acc. |
+|------------|-------|---|-------|----------------------------|-----------|
+| small | written | 17 | 76% | 0.91 | 100% |
+| small | ASR-style | 14 | 57% | 0.72 | 100% |
+| small | all | 31 | 68% | 0.84 | 100% |
+| big | written | 17 | 71% | 0.81 | 96% |
+| big | ASR-style | 14 | 57% | 0.70 | 98% |
+| big | all | 31 | 65% | 0.77 | 96% |
 
-First-letter casing on this set was 100%. Rare marks (colon: 1 example) are
-noise. Live goldens (`cargo test --lib -- --ignored`) lock the checkpoint’s
-strings; they are not a linguistic oracle. `RUPunct_big` uses the same 33
-labels and a `lowercase=true` WordPiece tokenizer; this engine loads it:
+Big does not win on this smoke set. It often prefers `Привет. Как дела?`
+where gold/small use `Привет, как дела?`. Live goldens (`cargo test --lib --
+--ignored`) lock the small checkpoint’s strings; they are not a linguistic
+oracle. `RUPunct_big` uses the same 33 labels, a `lowercase=true` WordPiece
+tokenizer, and `max_position_embeddings` **512** (small allows 2048). This
+engine loads it:
 
 ```sh
 RUPUNCT_REPO=RUPunct/RUPunct_big scripts/fetch-model.sh
 # -> ~/.rupunct/RUPunct_big  (small stays in ~/.rupunct/punct)
 rupunct -m ~/.rupunct/RUPunct_big --text "привет как дела"
+RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py
 ```
 
 SHA-256 pins are only for `RUPunct_small`. Override dest with `RUPUNCT_MODEL`.

@@ -97,6 +97,7 @@ Local HuggingFace parity and F1 (weights required; transformers only for parity)
 ```sh
 scripts/hf-parity.py
 scripts/f1.py
+RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py
 ```
 
 ## Versioning
