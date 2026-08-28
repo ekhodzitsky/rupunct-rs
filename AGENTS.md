@@ -92,6 +92,13 @@ if the checkpoint is missing:
 cargo test --lib -- --ignored
 ```
 
+Local HuggingFace parity and F1 (weights required; transformers only for parity):
+
+```sh
+scripts/hf-parity.py
+scripts/f1.py
+```
+
 ## Versioning
 
 Keep a Changelog + SemVer. `Cargo.toml` version is the product version.

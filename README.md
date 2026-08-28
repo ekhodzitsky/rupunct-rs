@@ -97,10 +97,26 @@ checkpoint:
 | `ты пойдешь со мной в кино` | `Ты пойдешь со мной в кино?` |
 | already-punctuated `привет, как дела` | double marks unless `--strip-punct` |
 
-There is no in-tree class-wise F1 set yet. Live goldens (`cargo test --lib --
---ignored`) lock the pinned checkpoint’s strings; they are not a linguistic
-oracle. `RUPunct_big` uses the same 33 labels and a `lowercase=true`
-WordPiece tokenizer; this engine loads it:
+Local HuggingFace parity (`scripts/hf-parity.py`, not CI) is 39/39 on
+`tests/fixtures/hf_parity_golden.json`: first-subtoken labels match the encoder.
+Space-separated inputs also match a per-word `process_token` join. Splice keeps
+hyphens, newlines, and tabs; the join does not. Consecutive identical tags are
+**not** merged the way `pipeline(..., aggregation_strategy="first")` groups
+entities.
+
+In-tree F1 (`scripts/f1.py`, 31 gold sentences in `tests/fixtures/f1_gold.json`)
+on the pinned small checkpoint. This is not a published benchmark:
+
+| split | n | exact match | punct micro-F1 (excl. `O`) |
+|-------|---|-------------|----------------------------|
+| written | 17 | 76% | 0.91 |
+| ASR-style | 14 | 57% | 0.72 |
+| all | 31 | 68% | 0.84 |
+
+First-letter casing on this set was 100%. Rare marks (colon: 1 example) are
+noise. Live goldens (`cargo test --lib -- --ignored`) lock the checkpoint’s
+strings; they are not a linguistic oracle. `RUPunct_big` uses the same 33
+labels and a `lowercase=true` WordPiece tokenizer; this engine loads it:
 
 ```sh
 RUPUNCT_REPO=RUPunct/RUPunct_big scripts/fetch-model.sh

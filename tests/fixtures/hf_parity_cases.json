@@ -1,0 +1,76 @@
+{
+  "comment": "Local HF parity cases for scripts/hf-parity.py. expect=text is the card space-join; expect=labels is first-subtoken id2label (splice may differ).",
+  "cases": [
+    {"id": "card.greeting", "input": "привет как дела", "expect": "text"},
+    {"id": "card.anna", "input": "привет меня зовут анна сколько будет стоить шестьдесят тысяч тенге", "expect": "text"},
+    {"id": "card.cinema", "input": "ты пойдешь со мной в кино", "expect": "text"},
+    {"id": "q.time", "input": "сколько времени", "expect": "text"},
+    {"id": "q.what", "input": "что ты делаешь", "expect": "text"},
+    {"id": "q.why", "input": "почему ты молчишь", "expect": "text"},
+    {"id": "q.name", "input": "как тебя зовут", "expect": "text"},
+    {"id": "stmt.weather", "input": "сегодня хорошая погода", "expect": "text"},
+    {"id": "stmt.thanks", "input": "спасибо большое", "expect": "text"},
+    {"id": "stmt.morning", "input": "доброе утро", "expect": "text"},
+    {"id": "stmt.dunno", "input": "я не знаю", "expect": "text"},
+    {"id": "stmt.hello_name", "input": "меня зовут иван петров", "expect": "text"},
+    {"id": "stmt.agree", "input": "конечно я согласен", "expect": "text"},
+    {"id": "stmt.said", "input": "он сказал что придет завтра", "expect": "text"},
+    {"id": "stmt.please", "input": "пожалуйста подождите", "expect": "text"},
+    {"id": "stmt.theater", "input": "вчера мы ходили в театр", "expect": "text"},
+    {"id": "stmt.important", "input": "это очень важно", "expect": "text"},
+    {"id": "excl.stop", "input": "стоп кто идет", "expect": "text"},
+    {"id": "excl.ura", "input": "ура мы победили", "expect": "text"},
+    {"id": "disc.maybe", "input": "да нет наверное", "expect": "text"},
+    {"id": "disc.well", "input": "ну что ж пойдем", "expect": "text"},
+    {"id": "greet.formal", "input": "здравствуйте меня зовут мария", "expect": "text"},
+    {"id": "list.and", "input": "купи хлеб молоко и масло", "expect": "text"},
+    {"id": "cond.if", "input": "если будет дождь мы останемся дома", "expect": "text"},
+    {"id": "num.price", "input": "билет стоит пятьсот рублей", "expect": "text"},
+    {"id": "stmt.work", "input": "завтра утром я иду на работу", "expect": "text"},
+    {"id": "q.where", "input": "где здесь ближайшая станция", "expect": "text"},
+    {"id": "stmt.call", "input": "перезвоните мне пожалуйста вечером", "expect": "text"},
+    {"id": "splice.hyphen", "input": "кто-то пришел", "expect": "labels"},
+    {"id": "splice.hyphen2", "input": "когда-нибудь мы встретимся", "expect": "labels"},
+    {"id": "splice.newline", "input": "привет\nкак дела", "expect": "labels"},
+    {"id": "splice.tab", "input": "привет\tкак дела", "expect": "labels"},
+    {"id": "splice.lead_space", "input": "  привет как дела", "expect": "labels"},
+    {"id": "splice.decimal", "input": "цена 42.5 рублей", "expect": "labels"},
+    {
+      "id": "flags.strip",
+      "input": "привет, как дела",
+      "hf_input": "привет как дела",
+      "flags": ["--strip-punct"],
+      "expect": "text"
+    },
+    {
+      "id": "flags.strip_lower",
+      "input": "привет, как дела",
+      "hf_input": "привет как дела",
+      "flags": ["--strip-punct", "--lowercase"],
+      "expect": "text"
+    },
+    {
+      "id": "flags.lower_ooo",
+      "input": "ООО рога и копыта",
+      "hf_input": "ооо рога и копыта",
+      "flags": ["--lowercase"],
+      "expect": "text"
+    },
+    {
+      "id": "flags.strip_hyphen",
+      "input": "кто-то, пришел",
+      "hf_input": "кто-то пришел",
+      "flags": ["--strip-punct"],
+      "expect": "labels"
+    },
+    {
+      "id": "long.600",
+      "generate": {
+        "seed": "это простой текст для проверки окон",
+        "min_tokens": 600
+      },
+      "flags": ["--max-seq", "2048"],
+      "expect": "labels"
+    }
+  ]
+}

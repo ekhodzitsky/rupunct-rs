@@ -90,3 +90,7 @@ impl Punctuator {
 #[cfg(test)]
 #[path = "punct_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "live_parity_tests.rs"]
+mod live_parity_tests;

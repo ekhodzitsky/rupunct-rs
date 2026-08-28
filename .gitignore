@@ -6,3 +6,5 @@
 pytorch_model.bin
 /punct
 .kimi/
+__pycache__/
+*.pyc

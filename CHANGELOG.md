@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-28
+
+### Added
+
+- `scripts/hf-parity.py` covers 39 cases (hyphen, newlines/tabs, `--strip-punct`,
+  `--lowercase`, 600-token `--max-seq 2048`). Frozen outputs live in
+  `tests/fixtures/hf_parity_golden.json`; ignored tests replay them.
+- `scripts/f1.py` scores trailing punctuation and casing on the 31-sentence
+  in-tree set `tests/fixtures/f1_gold.json` (written + ASR-style).
+
 ## [0.10.0] - 2026-08-28
 
 ### Changed
