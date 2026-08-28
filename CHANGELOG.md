@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-28
+
+### Fixed
+
+- Explicit `--max-seq` larger than the checkpoint's `max_position_embeddings`
+  is an error (exit 1), not a silent clamp. Default 512 still clamps in the
+  library so tiny test models keep working. `--max-seq 2048` is valid on
+  small, not on big (512).
+
 ## [0.12.0] - 2026-08-28
 
 ### Added

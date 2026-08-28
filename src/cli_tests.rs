@@ -233,3 +233,43 @@ fn strip_punct_flag_parses() {
     assert!(r.is_ok(), "{r:?}");
     assert_eq!(out.trim(), "привет мир");
 }
+
+#[test]
+fn max_seq_above_checkpoint_is_error() {
+    let dir = tiny_dir();
+    let d = dir.path().to_str().unwrap();
+    let err = run_capture(
+        &[
+            "-m",
+            d,
+            "--max-seq",
+            "32",
+            "--overlap",
+            "8",
+            "--text",
+            "привет",
+        ],
+        "",
+        true,
+    )
+    .0
+    .unwrap_err();
+    assert!(!err.is_usage(), "{err}");
+    assert!(err.to_string().contains("max_position_embeddings"), "{err}");
+    let (r, out, _) = run_capture(
+        &[
+            "-m",
+            d,
+            "--max-seq",
+            "8",
+            "--overlap",
+            "2",
+            "--text",
+            "привет",
+        ],
+        "",
+        true,
+    );
+    assert!(r.is_ok(), "{r:?}");
+    assert_eq!(out.trim(), "привет");
+}

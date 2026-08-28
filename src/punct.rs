@@ -78,6 +78,10 @@ impl Punctuator {
         texts.iter().map(|t| self.restore_with(t, opts)).collect()
     }
 
+    pub(crate) fn max_position_embeddings(&self) -> usize {
+        self.model.max_position_embeddings()
+    }
+
     #[cfg(test)]
     pub(crate) fn debug_logits(&self, text: &str) -> Result<crate::tensor::Tensor> {
         let spans = self.tokenizer.split_word_spans(text);

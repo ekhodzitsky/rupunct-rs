@@ -43,7 +43,9 @@ Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` at the SHA pinned
 in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
-(`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Overlap is
+(`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Explicit
+`--max-seq` larger than the checkpoint is a CLI error (library `RestoreOpts`
+still clamps). Overlap is
 shrunk so each window commits at least one new word. Output is spliced into
 the original string (newlines/tabs/hyphens stay). `--strip-punct` /
 `RestoreOpts.strip_punct` deletes isolated punctuation spans.

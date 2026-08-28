@@ -19,6 +19,7 @@ pub(super) struct OneShot {
     pub model_dir: Option<PathBuf>,
     pub lossy: bool,
     pub opts: RestoreOpts,
+    pub explicit_max_seq: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub(super) struct Worker {
     pub model_dir: Option<PathBuf>,
     pub lossy: bool,
     pub opts: RestoreOpts,
+    pub explicit_max_seq: bool,
 }
 
 pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> {
@@ -163,11 +165,13 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
         return Err("--jsonl cannot be combined with --text, --file, or positional text".into());
     }
 
+    let explicit_max_seq = max_seq.is_some();
     if jsonl {
         return Ok(Cmd::Jsonl(Worker {
             model_dir,
             lossy,
             opts,
+            explicit_max_seq,
         }));
     }
 
@@ -180,6 +184,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
             model_dir,
             lossy,
             opts,
+            explicit_max_seq,
         }));
     }
     if let Some(path) = file {
@@ -191,6 +196,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
             model_dir,
             lossy,
             opts,
+            explicit_max_seq,
         }));
     }
     if let Some(t) = positional {
@@ -202,6 +208,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
             model_dir,
             lossy,
             opts,
+            explicit_max_seq,
         }));
     }
 
@@ -214,6 +221,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
         model_dir,
         lossy,
         opts,
+        explicit_max_seq,
     }))
 }
 

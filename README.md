@@ -82,8 +82,10 @@ punctuation spans). Inputs longer than 512 WordPiece tokens (or the checkpoint
 `max_position_embeddings` if smaller) are split on word boundaries with a
 64-token overlap. The small checkpoint allows 2048 positions; the default
 512 window is a speed choice, not bit-identical to a full-length HuggingFace
-`pipeline` on long inputs. `--max-seq 2048` matches the checkpoint. `--max-seq`
-is ≥ 3 and `--overlap` must be smaller.
+`pipeline` on long inputs. `--max-seq 2048` matches **small**; big allows 512.
+An explicit `--max-seq` larger than the checkpoint is an error (the library
+still clamps `RestoreOpts` for tiny test models). `--max-seq` is ≥ 3 and
+`--overlap` must be smaller.
 
 ## Quality
 

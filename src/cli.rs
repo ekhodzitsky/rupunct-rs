@@ -98,6 +98,20 @@ where
     }
 }
 
+fn check_window(punct: &Punctuator, opts: RestoreOpts, explicit: bool) -> Result<(), CliError> {
+    if !explicit {
+        return Ok(());
+    }
+    let cap = punct.max_position_embeddings();
+    if opts.max_window_tokens > cap {
+        return Err(CliError::fail(format!(
+            "--max-seq ({}) exceeds checkpoint max_position_embeddings ({cap})",
+            opts.max_window_tokens
+        )));
+    }
+    Ok(())
+}
+
 fn load(dir: Option<PathBuf>) -> Result<Punctuator, CliError> {
     let dir = dir.unwrap_or_else(default_model_dir);
     Punctuator::load(&dir)
@@ -141,6 +155,7 @@ where
         cmd.text
     };
     let punct = load(cmd.model_dir)?;
+    check_window(&punct, cmd.opts, cmd.explicit_max_seq)?;
     let out = apply(&punct, &source, cmd.lossy, cmd.opts)?;
     writeln!(stdout, "{out}").map_err(io_err)
 }
@@ -151,6 +166,7 @@ where
     W: Write,
 {
     let punct = load(cmd.model_dir)?;
+    check_window(&punct, cmd.opts, cmd.explicit_max_seq)?;
     writeln!(stdout, r#"{{"ready":true}}"#).map_err(io_err)?;
     stdout.flush().map_err(io_err)?;
     let mut stdin = stdin;

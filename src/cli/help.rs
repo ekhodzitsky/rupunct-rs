@@ -26,7 +26,8 @@ Options:
       --lossy            On restore failure, emit the original text (exit 0)
       --strip-punct      Drop existing punctuation tokens before restore
       --lowercase        Lowercase words before restore (ASR-style)
-      --max-seq <N>      BERT window in tokens, ≥ 3 [default: 512]
+      --max-seq <N>      BERT window in tokens, ≥ 3 and ≤ checkpoint
+                         [default: 512]
       --overlap <N>      Window overlap in tokens, < max-seq [default: 64]
       --complete <SHELL> Print completions: bash, zsh, or fish
   -h, --help             Print help
