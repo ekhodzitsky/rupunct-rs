@@ -96,21 +96,34 @@ fn restore_windows_long_input() {
     let tmp = tempfile::tempdir().unwrap();
     let spec = TinySpec {
         max_pos: 8,
+        bias_label: LABEL_UPPER_PERIOD,
         ..TinySpec::default()
     };
     write_tiny_model(tmp.path(), &spec).unwrap();
     let p = Punctuator::load(tmp.path()).unwrap();
     let words: Vec<String> = (0..20).map(|i| format!("w{i}")).collect();
     let text = words.join(" ");
-    let out = p.restore(&text).unwrap();
-    assert_eq!(out.split_whitespace().count(), 20);
+    let out = p
+        .restore_with(
+            &text,
+            crate::RestoreOpts {
+                max_window_tokens: 8,
+                overlap_tokens: 7,
+            },
+        )
+        .unwrap();
+    let want: String = (0..20)
+        .map(|i| format!("W{i}."))
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert_eq!(out, want);
 }
 
 #[test]
 #[ignore = "requires RUPunct weights at $RUPUNCT_MODEL or ~/.rupunct/punct"]
 fn test_restore_reference_string() {
     let Some(dir) = crate::model::live_model_dir() else {
-        return;
+        panic!("ignored test requires weights at $RUPUNCT_MODEL or ~/.rupunct/punct");
     };
     let punct = Punctuator::load(&dir).expect("load punct model");
     let out = punct

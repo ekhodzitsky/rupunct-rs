@@ -23,8 +23,9 @@ cargo build --release
 ./target/release/rupunct --complete bash >> ~/.bash_completion
 ```
 
-A TTY with no input prints help and exits **2**. A pipe with no `--text` is
-the JSONL worker.
+A TTY with no `TEXT` / `--text` / `--file` / `--jsonl` is a **usage error**
+(exit **2**), not help. Stdin that is not a TTY (pipe **or** redirect) without
+those flags is the JSONL worker. Oneshot from stdin: `--text -` / `--file -`.
 
 ```text
 {"ready":true}
@@ -39,9 +40,13 @@ invalid UTF-8) are `{"error":"…"}` frames; the loop continues. Optional `"id"`
 is echoed on the response. Only a broken stdin/stdout aborts the worker.
 
 `--text` prints the restored line or exits **1** on load/restore failure.
+`--lossy` emits the original text and exits **0** on restore failure (load
+failure is still **1**). JSONL `--lossy` emits `{"text":…}` instead of
+`{"error":…}`. Empty JSONL `"text"` is an error frame; oneshot empty input
+is identity. One-shot `--text` / `--file` / stdin bodies are capped at 8 MiB.
 
 ```
-  0  success
+  0  success (--lossy restore failure is success)
   1  load or restore failure
   2  usage error
 ```
@@ -60,10 +65,11 @@ let ru = p.restore_with("привет как дела", RestoreOpts {
 ```
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
-original string instead. Inputs longer than 512 WordPiece tokens (or the
-checkpoint `max_position_embeddings` if smaller) are split on word boundaries
-with a 64-token overlap. Override with `--max-seq` / `--overlap` or
-`RestoreOpts`.
+original string instead. Output is space-joined words (newlines/tabs are
+not preserved). Inputs longer than 512 WordPiece tokens (or the checkpoint
+`max_position_embeddings` if smaller) are split on word boundaries with a
+64-token overlap. `--max-seq` is ≥ 3 and `--overlap` must be smaller.
+Override with `--max-seq` / `--overlap` or `RestoreOpts`.
 
 ## Weights
 

@@ -10,8 +10,8 @@ use crate::shape::Shape;
 /// Read-only mapping that keeps the `File` alive (Windows requires it).
 #[derive(Debug)]
 pub(crate) struct MappedFile {
-    _file: File,
     map: Mmap,
+    _file: File,
 }
 
 impl MappedFile {
@@ -21,7 +21,7 @@ impl MappedFile {
         // still SIGBUS — weights are treated as immutable after load.
         let map =
             unsafe { Mmap::map(&file) }.map_err(|e| TensorError::msg(format!("mmap: {e}")))?;
-        Ok(Arc::new(Self { _file: file, map }))
+        Ok(Arc::new(Self { map, _file: file }))
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -79,6 +79,9 @@ impl Tensor {
     ) -> TensorResult<Self> {
         let shape = shape.into();
         let nelem = shape.elem_count()?;
+        if !offset.is_multiple_of(4) {
+            return Err(TensorError::shape("f32 mmap offset is not 4-byte aligned"));
+        }
         let nbytes = nelem
             .checked_mul(4)
             .ok_or_else(|| TensorError::shape("f32 mmap overflow"))?;

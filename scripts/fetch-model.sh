@@ -5,7 +5,8 @@
 set -eu
 
 # Pin: RUPunct/RUPunct_small @ 2024-05-01 (config hidden=312, max_pos=2048).
-REVISION="${RUPUNCT_REVISION:-97aa9196b313e931424a5401fa42bc69dd15acd9}"
+PINNED_REVISION="97aa9196b313e931424a5401fa42bc69dd15acd9"
+REVISION="${RUPUNCT_REVISION:-$PINNED_REVISION}"
 DEST="${RUPUNCT_MODEL:-${HOME:?HOME unset}/.rupunct/punct}"
 mkdir -p "$DEST"
 
@@ -72,10 +73,14 @@ for f in model.safetensors tokenizer.json config.json; do
   fi
 done
 
-# Content hashes at RUPunct/RUPunct_small @ $REVISION
-check_sha256 "$DEST/config.json" "ec5503b1b544ee19563895c7c73884a4ec94b52b17eda172c11dcdc0eb924f03"
-check_sha256 "$DEST/tokenizer.json" "7ca617388c2092a3a84272025c52bbf3c6db0aee225c0351186295c0b5d3ddc6"
-if [ -f "$DEST/pytorch_model.bin" ]; then
-  check_sha256 "$DEST/pytorch_model.bin" "5b05a696d0a9629e0938852e221abcd84cc75ab67a4445fb0b4ea40630dd6b59"
+if [ "$REVISION" != "$PINNED_REVISION" ]; then
+  echo "fetch-model: skipping SHA-256 (RUPUNCT_REVISION=$REVISION != pinned $PINNED_REVISION)" >&2
+else
+  # Content hashes at RUPunct/RUPunct_small @ $PINNED_REVISION
+  check_sha256 "$DEST/config.json" "ec5503b1b544ee19563895c7c73884a4ec94b52b17eda172c11dcdc0eb924f03"
+  check_sha256 "$DEST/tokenizer.json" "7ca617388c2092a3a84272025c52bbf3c6db0aee225c0351186295c0b5d3ddc6"
+  if [ -f "$DEST/pytorch_model.bin" ]; then
+    check_sha256 "$DEST/pytorch_model.bin" "5b05a696d0a9629e0938852e221abcd84cc75ab67a4445fb0b4ea40630dd6b59"
+  fi
 fi
 echo "ok $DEST (revision $REVISION)"

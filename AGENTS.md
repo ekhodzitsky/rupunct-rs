@@ -15,7 +15,7 @@ rupunct "привет как дела"
 rupunct -m ~/.rupunct/punct --jsonl
 ```
 
-JSONL (stdin/stdout, one object per line; default for pipes):
+JSONL (stdin/stdout, one object per line; default when stdin is not a TTY):
 
 ```text
 {"ready": true}
@@ -24,22 +24,28 @@ JSONL (stdin/stdout, one object per line; default for pipes):
 ```
 
 Request-level failures are `{"error": "…"}` frames; the loop continues.
-Only broken stdin/stdout aborts the worker. A TTY with no input is a usage
-error (exit 2). `--text` uses `restore` (exit 1 on load/restore failure).
-JSONL frames larger than 1 MiB or invalid UTF-8 are `{"error"}` frames; the
-loop continues. One-shot `--file` / stdin bodies are capped at 8 MiB.
+Only broken stdin/stdout aborts the worker. A TTY with no TEXT/`--text`/
+`--file`/`--jsonl` is a usage error (exit 2), not help. `--text` uses
+`restore` (exit 1 on load/restore failure). `--lossy` emits the original
+text and exits 0 on restore failure. JSONL empty `"text"` is an error
+frame; oneshot empty input is identity. JSONL frames larger than 1 MiB
+or invalid UTF-8 are `{"error"}` frames; the loop continues. One-shot
+`--text` / `--file` / stdin bodies are capped at 8 MiB. Redirected stdin
+without those flags is JSONL; `--text -` is oneshot from stdin.
 
-`--text` / `[TEXT]` / `--file` is one-shot. Pipes without those flags are
-the JSONL worker (`--jsonl` forces it). Weights:
+`--text` / `[TEXT]` / `--file` is one-shot. Non-TTY stdin without those
+flags is the JSONL worker (`--jsonl` forces it). Weights:
 `model.safetensors` + `tokenizer.json` + `config.json`.
 `RUPUNCT_MODEL` overrides the default `~/.rupunct/punct` (`USERPROFILE` on
-Windows if `HOME` is unset).
+Windows if `HOME` is unset). Non-UTF-8 argv is usage (exit 2).
 
 Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` at the SHA pinned
 in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
 
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
-(`--max-seq` / `--overlap` / `RestoreOpts`).
+(`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Overlap is
+shrunk so each window commits at least one new word. Output is space-joined
+words (newlines/tabs are not preserved).
 
 Direct crate deps stay tiny: `serde_json`, `memmap2`, and `gemm` only on
 non-macOS (Accelerate on macOS). Safetensors and `tokenizer.json` are parsed
@@ -73,7 +79,8 @@ python3 scripts/check-changelog.py
 cargo llvm-cov --lib --bins --fail-under-lines 90
 ```
 
-Live restore against real weights is local only:
+Live restore against real weights is local only. Ignored tests **fail**
+if the checkpoint is missing:
 
 ```sh
 cargo test --lib -- --ignored

@@ -5,6 +5,35 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-28
+
+### Fixed
+
+- Token windows shrink overlap so each window still commits a new word.
+  `--max-seq` too small with a large `--overlap` no longer labels the new
+  word as `LOWER_O` (identity).
+- `--max-seq` must be ≥ 3. `--overlap` must be less than `--max-seq`
+  (including the 64 default). Completions match the parser (no zsh stacked
+  shorts; fish valued flags take an argument).
+- Non-UTF-8 argv is a usage error (exit 2), not a panic.
+- `config.json` rejects `hidden_size` / `num_attention_heads` of 0.
+  F32 mmap views require a 4-byte-aligned offset. Integer safetensors
+  payloads must match `shape × dtype width`.
+- `scripts/fetch-model.sh` skips SHA-256 when `RUPUNCT_REVISION` is not the
+  pinned commit (hashes are only valid for that pin).
+
+### Changed
+
+- A TTY with no input is a usage error (docs now match). Non-TTY stdin
+  without `--text` / `--file` is JSONL (pipe **or** redirect). `--lossy`
+  restore failure is exit 0 / `{"text"}`. One-shot 8 MiB cap includes
+  `--text` argv. Ignored live tests fail if the checkpoint is missing.
+
+### Added
+
+- CI jobs on Windows (mmap `File` lifetime) and a pinned Rust toolchain on
+  Ubuntu / macOS / Windows.
+
 ## [0.6.0] - 2026-08-28
 
 ### Fixed

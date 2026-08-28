@@ -91,8 +91,8 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
                     return Err("multiple --max-seq options".into());
                 }
                 let n = parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?;
-                if n < 2 {
-                    return Err("--max-seq must be at least 2".into());
+                if n < 3 {
+                    return Err("--max-seq must be at least 3".into());
                 }
                 max_seq = Some(n);
             }
@@ -127,9 +127,16 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
         return Ok(Cmd::Complete(shell));
     }
 
+    let window = max_seq.unwrap_or(RestoreOpts::default().max_window_tokens);
+    let ov = overlap.unwrap_or(RestoreOpts::default().overlap_tokens);
+    if ov >= window {
+        return Err(format!(
+            "--overlap ({ov}) must be less than --max-seq ({window})"
+        ));
+    }
     let opts = RestoreOpts {
-        max_window_tokens: max_seq.unwrap_or(RestoreOpts::default().max_window_tokens),
-        overlap_tokens: overlap.unwrap_or(RestoreOpts::default().overlap_tokens),
+        max_window_tokens: window,
+        overlap_tokens: ov,
     };
 
     let sources = usize::from(text.is_some())
@@ -252,7 +259,7 @@ fn set_flag(slot: &mut bool, flag: &str) -> Result<(), String> {
 
 fn parse_usize(raw: &str, flag: &str) -> Result<usize, String> {
     raw.parse::<usize>()
-        .map_err(|_| format!("{flag} needs a positive integer, got '{raw}'"))
+        .map_err(|_| format!("{flag} needs a non-negative integer, got '{raw}'"))
 }
 
 #[cfg(test)]
@@ -303,6 +310,15 @@ mod tests {
         assert!(parse(&a(&["--text", "a", "--text", "b"]), true).is_err());
         assert!(parse(&a(&["--text", "--model-dir"]), true).is_err());
         assert!(parse(&a(&["--max-seq", "0"]), true).is_err());
+        assert!(parse(&a(&["--max-seq", "2"]), true).is_err());
+        assert!(parse(&a(&["--max-seq", "32"]), true).is_err());
+        assert!(
+            parse(
+                &a(&["--max-seq", "32", "--overlap", "8", "--text", "x"]),
+                true
+            )
+            .is_ok()
+        );
         assert!(parse(&a(&["--jsonl", "--jsonl"]), false).is_err());
         assert!(parse(&a(&["--lossy", "--lossy", "--text", "x"]), true).is_err());
         assert!(parse(&a(&["--complete", "bash", "--lossy"]), true).is_err());

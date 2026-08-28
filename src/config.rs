@@ -25,6 +25,12 @@ impl Config {
             .map_err(|e| Error::config(format!("{CONFIG_FILE} is not valid JSON: {e}")))?;
         let hidden = json_usize(&v, "hidden_size")?;
         let heads = json_usize(&v, "num_attention_heads")?;
+        if hidden == 0 {
+            return Err(Error::config("hidden_size must be > 0"));
+        }
+        if heads == 0 {
+            return Err(Error::config("num_attention_heads must be > 0"));
+        }
         if hidden % heads != 0 {
             return Err(Error::config(format!(
                 "hidden_size {hidden} not divisible by num_attention_heads {heads}"
@@ -74,7 +80,7 @@ impl Config {
 fn json_usize(v: &serde_json::Value, key: &str) -> Result<usize> {
     v.get(key)
         .and_then(|x| x.as_u64())
-        .map(|x| x as usize)
+        .and_then(|x| usize::try_from(x).ok())
         .ok_or_else(|| Error::config(format!("missing or non-integer field '{key}'")))
 }
 
@@ -100,6 +106,26 @@ mod tests {
         )
         .unwrap();
         assert!(Config::from_json(&cfg).is_err());
+    }
+
+    #[test]
+    fn config_rejects_zero_heads_and_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = tmp.path().join(CONFIG_FILE);
+        let body = |hidden: u32, heads: u32| {
+            format!(
+                r#"{{"hidden_size": {hidden}, "num_attention_heads": {heads}, "num_hidden_layers": 1,
+               "intermediate_size": 8, "vocab_size": 4, "max_position_embeddings": 8,
+               "type_vocab_size": 2, "layer_norm_eps": 1e-12, "num_labels": 1,
+               "id2label": {{"0": "LOWER_O"}}}}"#
+            )
+        };
+        std::fs::write(&cfg, body(4, 0)).unwrap();
+        let err = Config::from_json(&cfg).unwrap_err().to_string();
+        assert!(err.contains("num_attention_heads"), "{err}");
+        std::fs::write(&cfg, body(0, 1)).unwrap();
+        let err = Config::from_json(&cfg).unwrap_err().to_string();
+        assert!(err.contains("hidden_size"), "{err}");
     }
 
     #[test]

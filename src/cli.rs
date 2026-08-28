@@ -44,7 +44,17 @@ impl CliError {
 }
 
 pub fn run() -> i32 {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args = Vec::new();
+    for (i, arg) in std::env::args_os().skip(1).enumerate() {
+        match arg.into_string() {
+            Ok(s) => args.push(s),
+            Err(_) => {
+                eprintln!("rupunct: argument {} is not valid UTF-8", i + 1);
+                eprintln!("Try 'rupunct --help' for more information.");
+                return 2;
+            }
+        }
+    }
     let tty = io::stdin().is_terminal();
     match run_from(
         &args,

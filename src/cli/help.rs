@@ -22,16 +22,16 @@ Options:
                          [default: ~/.rupunct/punct]
       --text <TEXT>      One-shot source (`-` reads stdin)
   -f, --file <PATH>      Read one-shot source from a file (`-` = stdin)
-      --jsonl            JSONL worker (default when stdin is a pipe)
-      --lossy            On restore failure, emit the original text
-      --max-seq <N>      BERT window in tokens [default: 512]
-      --overlap <N>      Window overlap in tokens [default: 64]
+      --jsonl            JSONL worker (default when stdin is not a TTY)
+      --lossy            On restore failure, emit the original text (exit 0)
+      --max-seq <N>      BERT window in tokens, ≥ 3 [default: 512]
+      --overlap <N>      Window overlap in tokens, < max-seq [default: 64]
       --complete <SHELL> Print completions: bash, zsh, or fish
   -h, --help             Print help
   -V, --version          Print version
 
 Exit status:
-  0  success
+  0  success (--lossy restore failure is success)
   1  load or restore failure
   2  usage error
 
@@ -40,7 +40,9 @@ JSONL (stdin/stdout, one object per line):
   → {{\"text\":\"…\"}}           ← {{\"text\":\"…\"}} | {{\"error\":\"…\"}}
   Optional \"id\" on a request is copied onto the response.
   Frames larger than 1 MiB or invalid UTF-8 are {{\"error\"}} frames.
-  --file / stdin one-shot bodies are capped at 8 MiB.",
+  One-shot --text / --file / stdin bodies are capped at 8 MiB.
+  A TTY with no TEXT/--text/--file/--jsonl is a usage error, not help.
+  Redirected stdin without those flags is JSONL; use --text - for oneshot.",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -78,7 +80,7 @@ fn write_zsh(out: &mut impl Write) -> std::io::Result<()> {
     writeln!(
         out,
         "#compdef rupunct
-_arguments -s \\
+_arguments \\
   '(-h --help)'{{-h,--help}}'[print help]' \\
   '(-V --version)'{{-V,--version}}'[print version]' \\
   '(-m --model-dir)'{{-m,--model-dir}}'[weights dir]:dir:_files -/' \\
@@ -99,12 +101,12 @@ fn write_fish(out: &mut impl Write) -> std::io::Result<()> {
         "complete -c rupunct -s h -l help -d 'Print help'
 complete -c rupunct -s V -l version -d 'Print version'
 complete -c rupunct -s m -l model-dir -r -d 'Weights directory'
-complete -c rupunct -l text -d 'One-shot source'
+complete -c rupunct -l text -r -d 'One-shot source'
 complete -c rupunct -s f -l file -r -d 'Read source from file'
 complete -c rupunct -l jsonl -d 'JSONL worker'
 complete -c rupunct -l lossy -d 'Identity fallback on restore failure'
-complete -c rupunct -l max-seq -d 'BERT window in tokens'
-complete -c rupunct -l overlap -d 'Window overlap in tokens'
+complete -c rupunct -l max-seq -r -d 'BERT window in tokens'
+complete -c rupunct -l overlap -r -d 'Window overlap in tokens'
 complete -c rupunct -l complete -xa 'bash zsh fish' -d 'Print completions'"
     )
 }

@@ -125,14 +125,18 @@ fn parse_tensor(
     if abs_end > file_len {
         return Err(TensorError::msg(format!("{name}: payload OOB")));
     }
-    if dtype == Dtype::F32 {
+    if dtype == Dtype::F32 || dtype == Dtype::I32 || dtype == Dtype::I64 {
+        let width = match dtype {
+            Dtype::I64 => 8usize,
+            _ => 4,
+        };
         let nelem = shape_product(&shape)?;
         let expect = nelem
-            .checked_mul(4)
-            .ok_or_else(|| TensorError::msg(format!("{name}: F32 size overflow")))?;
+            .checked_mul(width)
+            .ok_or_else(|| TensorError::msg(format!("{name}: size overflow")))?;
         if expect != nbytes {
             return Err(TensorError::msg(format!(
-                "{name}: F32 byte len {nbytes} != {expect}"
+                "{name}: byte len {nbytes} != {expect}"
             )));
         }
     }
@@ -361,5 +365,18 @@ mod tests {
         bytes.extend_from_slice(&[0u8; 16]);
         let err = parse_index(&bytes).unwrap_err();
         assert!(err.to_string().contains("overlapping"), "{err}");
+    }
+
+    #[test]
+    fn rejects_integer_size_mismatch() {
+        let mut header = br#"{"a":{"dtype":"I32","shape":[2],"data_offsets":[0,4]}}"#.to_vec();
+        while !header.len().is_multiple_of(8) {
+            header.push(b' ');
+        }
+        let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&header);
+        bytes.extend_from_slice(&[0u8; 8]);
+        let err = parse_index(&bytes).unwrap_err();
+        assert!(err.to_string().contains("byte len"), "{err}");
     }
 }

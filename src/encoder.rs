@@ -1,7 +1,7 @@
 //! BERT encoder layer: self-attention + feed-forward.
 
 use crate::config::Config;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::gelu::gelu_tensor;
 use crate::layer_norm::LayerNorm;
 use crate::linear::Linear;
@@ -23,7 +23,7 @@ pub(crate) struct Attention {
 
 impl Attention {
     pub(crate) fn load(ws: &WeightSet, prefix: &str, config: &Config) -> Result<Self> {
-        Ok(Self {
+        let attn = Self {
             query: linear_from_ws(
                 ws,
                 &format!("{prefix}.attention.self.query.weight"),
@@ -53,11 +53,32 @@ impl Attention {
             n_heads: config.num_attention_heads,
             head_dim: config.head_dim(),
             hidden: config.hidden_size,
-        })
+        };
+        if attn.query.in_dim() != config.hidden_size
+            || attn.query.out_dim() != config.hidden_size
+            || attn.key.in_dim() != config.hidden_size
+            || attn.key.out_dim() != config.hidden_size
+            || attn.value.in_dim() != config.hidden_size
+            || attn.value.out_dim() != config.hidden_size
+            || attn.dense.in_dim() != config.hidden_size
+            || attn.dense.out_dim() != config.hidden_size
+        {
+            return Err(Error::config(format!(
+                "{prefix}: Q/K/V/dense must be [{0}, {0}]",
+                config.hidden_size
+            )));
+        }
+        Ok(attn)
     }
 
     pub(crate) fn forward(&self, hidden_states: &Tensor, attention_mask: &[u32]) -> Result<Tensor> {
         let seq = hidden_states.dim(0)?;
+        if attention_mask.len() != seq {
+            return Err(Error::model(format!(
+                "attention_mask len {} != seq {seq}",
+                attention_mask.len()
+            )));
+        }
         let q = self.query.forward(hidden_states)?;
         let k = self.key.forward(hidden_states)?;
         let v = self.value.forward(hidden_states)?;

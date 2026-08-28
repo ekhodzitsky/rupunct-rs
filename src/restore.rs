@@ -62,10 +62,7 @@ pub(crate) fn restore(
     let mut labels = Vec::with_capacity(words.len());
     for w in &windows {
         let slice = &words[w.start..w.end];
-        let encoding = tokenizer.encode_words(slice, true);
-        let mut ids = encoding.get_ids().to_vec();
-        let mut mask = encoding.get_attention_mask().to_vec();
-        let mut word_ids = encoding.get_word_ids().to_vec();
+        let (mut ids, mut mask, mut word_ids) = tokenizer.encode_words(slice, true).into_parts();
         fit_seq(&mut ids, &mut mask, &mut word_ids, window);
         let token_type_ids = vec![0u32; ids.len()];
         let logits = model.forward(&ids, &token_type_ids, &mask)?;
@@ -131,7 +128,12 @@ pub(crate) fn pack_windows(
         for &c in &counts[start..committed] {
             toks = toks.saturating_add(c);
         }
-        while start < committed && toks > max_pos {
+        // Drop left context until specials + overlap + the next new word fit.
+        while start < committed {
+            let next = counts[committed];
+            if toks + next <= max_pos {
+                break;
+            }
             toks = toks.saturating_sub(counts[start]);
             start += 1;
         }
@@ -145,6 +147,9 @@ pub(crate) fn pack_windows(
             end += 1;
         }
         if end <= committed {
+            // One word still does not fit: encode it alone so fit_seq keeps
+            // its first subtokens instead of truncating them behind overlap.
+            start = committed;
             end = (committed + 1).min(words.len());
         }
         let skip = committed.saturating_sub(start);

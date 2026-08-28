@@ -37,6 +37,22 @@ fn pack_windows_splits_when_over_budget() {
 }
 
 #[test]
+fn pack_windows_drops_overlap_so_each_window_commits() {
+    let (_tmp, tok) = tokenizer();
+    let words: Vec<String> = (0..10).map(|i| format!("w{i}")).collect();
+    let wins = pack_windows(&tok, &words, 8, 7);
+    assert!(wins.len() >= 2, "got {wins:?}");
+    let committed: usize = wins.iter().map(|w| w.end - w.start - w.skip).sum();
+    assert_eq!(committed, 10);
+    for w in &wins {
+        assert!(
+            w.end - w.start > w.skip,
+            "window {w:?} commits no new words"
+        );
+    }
+}
+
+#[test]
 fn restore_opts_resolve_clamps() {
     let o = RestoreOpts {
         max_window_tokens: 10_000,

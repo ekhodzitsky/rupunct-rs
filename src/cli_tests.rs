@@ -26,6 +26,8 @@ fn help_and_version_skip_model() {
     assert!(r.is_ok());
     assert!(out.contains("Usage:"), "{out}");
     assert!(out.contains("Exit status:"), "{out}");
+    assert!(out.contains("8 MiB"), "{out}");
+    assert!(out.contains("not a TTY"), "{out}");
     let (r, out, _) = run_capture(&["-V"], "", true);
     assert!(r.is_ok());
     assert!(out.contains("rupunct "));
@@ -184,9 +186,11 @@ fn complete_bash_and_unknown_shell() {
     let (r, out, _) = run_capture(&["--complete=zsh"], "", true);
     assert!(r.is_ok());
     assert!(out.contains("_arguments"), "{out}");
+    assert!(!out.contains("_arguments -s"), "{out}");
     let (r, out, _) = run_capture(&["--complete", "fish"], "", true);
     assert!(r.is_ok());
     assert!(out.contains("complete -c rupunct"), "{out}");
+    assert!(out.contains("-l text -r"), "{out}");
 }
 
 #[test]

@@ -96,7 +96,7 @@ fn test_golden_fixtures_replay_reduced_vocab() {
 fn test_golden_fixtures_replay_full_vocab() {
     let path = crate::default_model_dir().join(crate::TOKENIZER_FILE);
     if !path.is_file() {
-        return;
+        panic!("ignored test requires tokenizer.json at $RUPUNCT_MODEL or ~/.rupunct/punct");
     }
     let tokenizer = Tokenizer::from_file(&path).expect("load real tokenizer.json");
     assert_replays(&tokenizer);

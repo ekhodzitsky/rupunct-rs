@@ -36,16 +36,23 @@ pub(crate) struct Encoding {
 }
 
 impl Encoding {
+    #[cfg(test)]
     pub(crate) fn get_ids(&self) -> &[u32] {
         &self.ids
     }
 
+    #[cfg(test)]
     pub(crate) fn get_attention_mask(&self) -> &[u32] {
         &self.attention_mask
     }
 
+    #[cfg(test)]
     pub(crate) fn get_word_ids(&self) -> &[Option<u32>] {
         &self.word_ids
+    }
+
+    pub(crate) fn into_parts(self) -> (Vec<u32>, Vec<u32>, Vec<Option<u32>>) {
+        (self.ids, self.attention_mask, self.word_ids)
     }
 }
 
