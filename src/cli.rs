@@ -3,6 +3,7 @@
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
+use crate::limits::MAX_RESTORE_BYTES;
 use crate::{Punctuator, RestoreOpts, RestoredWord, default_model_dir, restore::join_words};
 
 mod args;
@@ -14,8 +15,8 @@ use help::{write_complete, write_help};
 
 /// Reject oversized JSONL frames so a single line cannot exhaust RAM.
 pub(crate) const MAX_JSONL_LINE: usize = 1_048_576;
-/// Cap for `--text -` / `--file` one-shot bodies.
-pub(crate) const MAX_ONESHOT: usize = 8 * 1024 * 1024;
+/// Cap for `--text -` / `--file` one-shot bodies (same as library restore).
+pub(crate) const MAX_ONESHOT: usize = MAX_RESTORE_BYTES;
 
 #[derive(Debug)]
 pub(crate) enum CliError {
@@ -239,6 +240,8 @@ fn json_ok(id: Option<&serde_json::Value>, text: &str, words: &[RestoredWord]) -
                 "text": w.text,
                 "label": w.label,
                 "score": w.score,
+                "start": w.start,
+                "end": w.end,
             })
         })
         .collect();

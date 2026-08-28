@@ -384,6 +384,17 @@ fn test_added_token_lstrip_rstrip() {
 }
 
 #[test]
+fn split_word_spans_byte_offsets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let tok = Tokenizer::from_file(&write_tokenizer(tmp.path(), TINY_VOCAB)).unwrap();
+    let spans = tok.split_word_spans(" привет мир");
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].text, "привет");
+    assert_eq!(&" привет мир"[spans[0].start..spans[0].end], "привет");
+    assert_eq!(&" привет мир"[spans[1].start..spans[1].end], "мир");
+}
+
+#[test]
 fn encode_matches_split_words_then_encode_words() {
     let json = r###"{
         "version": "1.0", "truncation": null, "padding": null,

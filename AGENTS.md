@@ -48,9 +48,10 @@ shrunk so each window commits at least one new word. Output is space-joined
 words (newlines/tabs are not preserved). `--strip-punct` /
 `RestoreOpts.strip_punct` drops isolated punctuation tokens.
 `--lowercase` / `RestoreOpts.lowercase` lowercases words before encode.
-JSONL success frames include `words` (`word` / `text` / `label` / `score`).
-`Punctuator::restore_words` is the library form. Compatible with
-`RUPunct/RUPunct_big` (same 33 labels) via `RUPUNCT_REPO`.
+JSONL success frames include `words` (`word` / `text` / `label` / `score` /
+`start` / `end` byte offsets). `Punctuator::restore_words` is the library
+form. `RUPUNCT_REPO=RUPunct/RUPunct_big` installs under
+`~/.rupunct/RUPunct_big` (does not overwrite small).
 
 Direct crate deps stay tiny: `serde_json`, `memmap2`, and `gemm` only on
 non-macOS (Accelerate on macOS). Safetensors and `tokenizer.json` are parsed

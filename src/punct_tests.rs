@@ -148,6 +148,10 @@ fn restore_words_reports_label_and_score() {
     assert_eq!(words[0].label, ID2LABEL[LABEL_LOWER_O]);
     assert_eq!(words[0].text, "привет");
     assert!(words[0].score > 0.5, "score {}", words[0].score);
+    assert_eq!(words[0].start, 0);
+    assert_eq!(words[0].end, "привет".len());
+    assert_eq!(words[1].start, "привет ".len());
+    assert_eq!(words[1].end, "привет мир".len());
 }
 
 #[test]
@@ -165,6 +169,22 @@ fn strip_punct_drops_isolated_punctuation() {
         words.iter().map(|w| w.word.as_str()).collect::<Vec<_>>(),
         ["привет", "мир"]
     );
+}
+
+#[test]
+fn strip_punct_keeps_hyphen_and_decimal_dot() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_tiny_model(tmp.path(), &TinySpec::default()).unwrap();
+    let p = Punctuator::load(tmp.path()).unwrap();
+    let opts = crate::RestoreOpts {
+        strip_punct: true,
+        ..crate::RestoreOpts::default()
+    };
+    let words = p.restore_words_with("кто-то 42.5", opts).unwrap();
+    let surface: Vec<&str> = words.iter().map(|w| w.word.as_str()).collect();
+    assert!(surface.contains(&"-"), "{surface:?}");
+    assert!(surface.contains(&"."), "{surface:?}");
+    assert!(!surface.contains(&","));
 }
 
 #[test]

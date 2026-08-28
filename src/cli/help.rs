@@ -41,7 +41,7 @@ JSONL (stdin/stdout, one object per line):
   {{\"ready\":true}}
   → {{\"text\":\"…\"}}           ← {{\"text\":\"…\",\"words\":[…]}} | {{\"error\":\"…\"}}
   Optional \"id\" on a request is copied onto the response.
-  Each word has word/text/label/score (softmax of the first subtoken).
+  Each word has word/text/label/score/start/end (byte offsets).
   Frames larger than 1 MiB or invalid UTF-8 are {{\"error\"}} frames.
   One-shot --text / --file / stdin bodies are capped at 8 MiB.
   A TTY with no TEXT/--text/--file/--jsonl is a usage error, not help.

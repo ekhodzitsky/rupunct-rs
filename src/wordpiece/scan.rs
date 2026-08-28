@@ -12,8 +12,15 @@ pub(super) struct AddedToken {
 }
 
 pub(super) enum Span<'a> {
-    Text(&'a str),
-    Added(usize),
+    Text {
+        text: &'a str,
+        start: usize,
+    },
+    Added {
+        idx: usize,
+        start: usize,
+        end: usize,
+    },
 }
 
 impl Tokenizer {
@@ -32,9 +39,17 @@ impl Tokenizer {
             .map(|t| t.id)
     }
 
-    pub(super) fn normalize(&self, text: &str) -> String {
+    /// Normalize `text` (a slice of the original input starting at `orig_start`).
+    /// The map has one `(orig_start, orig_end)` per byte of the returned string.
+    pub(super) fn normalize_mapped(
+        &self,
+        text: &str,
+        orig_start: usize,
+    ) -> (String, Vec<(usize, usize)>) {
         let (clean_text, handle_chinese_chars, lowercase) = match &self.normalizer {
-            Normalizer::None => return text.to_string(),
+            Normalizer::None => {
+                return (text.to_string(), identity_byte_map(text, orig_start));
+            }
             Normalizer::Bert {
                 clean_text,
                 handle_chinese_chars,
@@ -43,33 +58,58 @@ impl Tokenizer {
         };
 
         let mut out = String::with_capacity(text.len());
+        let mut map = Vec::with_capacity(text.len());
+        let mut i = orig_start;
         for c in text.chars() {
+            let e = i + c.len_utf8();
+            let span = (i, e);
+            i = e;
             if clean_text {
                 if c == '\0' || c == '\u{FFFD}' || is_control(c) {
                     continue;
                 }
-                out.push(if c.is_whitespace() { ' ' } else { c });
+                let o = if c.is_whitespace() { ' ' } else { c };
+                push_mapped(&mut out, &mut map, o, span);
             } else {
-                out.push(c);
+                push_mapped(&mut out, &mut map, c, span);
             }
         }
         if handle_chinese_chars {
             let mut spaced = String::with_capacity(out.len());
+            let mut smap = Vec::with_capacity(map.len());
+            let mut b = 0usize;
             for c in out.chars() {
+                let n = c.len_utf8();
+                let span = map[b];
                 if is_chinese_char(c) {
-                    spaced.push(' ');
-                    spaced.push(c);
-                    spaced.push(' ');
+                    push_mapped(&mut spaced, &mut smap, ' ', span);
+                    push_mapped(&mut spaced, &mut smap, c, span);
+                    push_mapped(&mut spaced, &mut smap, ' ', span);
                 } else {
                     spaced.push(c);
+                    smap.extend_from_slice(&map[b..b + n]);
                 }
+                b += n;
             }
             out = spaced;
+            map = smap;
         }
         if lowercase {
-            out = out.to_lowercase();
+            let mut low = String::with_capacity(out.len());
+            let mut lmap = Vec::with_capacity(map.len());
+            let mut b = 0usize;
+            for c in out.chars() {
+                let n = c.len_utf8();
+                let span = map[b];
+                for lc in c.to_lowercase() {
+                    push_mapped(&mut low, &mut lmap, lc, span);
+                }
+                b += n;
+            }
+            out = low;
+            map = lmap;
         }
-        out
+        (out, map)
     }
 
     pub(super) fn tokenize_word(&self, word: &str, out: &mut Vec<u32>) {
@@ -119,7 +159,7 @@ impl Tokenizer {
         let mut spans = Vec::new();
         if self.added_tokens.is_empty() {
             if !text.is_empty() {
-                spans.push(Span::Text(text));
+                spans.push(Span::Text { text, start: 0 });
             }
             return spans;
         }
@@ -163,15 +203,45 @@ impl Tokenizer {
             }
 
             if start > span_start {
-                spans.push(Span::Text(&text[span_start..start]));
+                spans.push(Span::Text {
+                    text: &text[span_start..start],
+                    start: span_start,
+                });
             }
-            spans.push(Span::Added(idx));
+            spans.push(Span::Added {
+                idx,
+                start,
+                end: stop,
+            });
             pos = stop;
             span_start = stop;
         }
         if span_start < text.len() {
-            spans.push(Span::Text(&text[span_start..]));
+            spans.push(Span::Text {
+                text: &text[span_start..],
+                start: span_start,
+            });
         }
         spans
+    }
+}
+
+fn identity_byte_map(text: &str, orig_start: usize) -> Vec<(usize, usize)> {
+    let mut map = Vec::with_capacity(text.len());
+    let mut i = orig_start;
+    for c in text.chars() {
+        let e = i + c.len_utf8();
+        for _ in 0..c.len_utf8() {
+            map.push((i, e));
+        }
+        i = e;
+    }
+    map
+}
+
+fn push_mapped(out: &mut String, map: &mut Vec<(usize, usize)>, c: char, span: (usize, usize)) {
+    out.push(c);
+    for _ in 0..c.len_utf8() {
+        map.push(span);
     }
 }

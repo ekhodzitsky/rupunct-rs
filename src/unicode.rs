@@ -5,25 +5,34 @@
 //! `is_bert_punc` match that crate char for char.
 
 /// BertPreTokenizer: split on whitespace (dropped), isolate punctuation.
+#[cfg(test)]
 pub(crate) fn bert_pre_tokenize(text: &str) -> Vec<&str> {
+    bert_pre_tokenize_spans(text)
+        .into_iter()
+        .map(|(s, e)| &text[s..e])
+        .collect()
+}
+
+/// Byte ranges into `text` for each BertPreTokenizer word.
+pub(crate) fn bert_pre_tokenize_spans(text: &str) -> Vec<(usize, usize)> {
     let mut words = Vec::new();
     let mut word_start: Option<usize> = None;
     for (i, c) in text.char_indices() {
         if c.is_whitespace() {
             if let Some(s) = word_start.take() {
-                words.push(&text[s..i]);
+                words.push((s, i));
             }
         } else if is_bert_punc(c) {
             if let Some(s) = word_start.take() {
-                words.push(&text[s..i]);
+                words.push((s, i));
             }
-            words.push(&text[i..i + c.len_utf8()]);
+            words.push((i, i + c.len_utf8()));
         } else if word_start.is_none() {
             word_start = Some(i);
         }
     }
     if let Some(s) = word_start {
-        words.push(&text[s..]);
+        words.push((s, text.len()));
     }
     words
 }
@@ -279,5 +288,11 @@ mod tests {
         assert!(is_chinese_char('野'));
         assert!(!is_chinese_char('が'));
         assert!(!is_chinese_char('а'));
+        let t = "привет, мир";
+        let spans = bert_pre_tokenize_spans(t);
+        let words = bert_pre_tokenize(t);
+        assert_eq!(words, ["привет", ",", "мир"]);
+        assert_eq!(spans.len(), words.len());
+        assert_eq!(&t[spans[1].0..spans[1].1], ",");
     }
 }

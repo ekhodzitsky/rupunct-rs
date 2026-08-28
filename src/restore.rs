@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 use crate::labels::{argmax_softmax, first_subword_preds, process_token};
 use crate::limits::{MAX_RESTORE_BYTES, MIN_POSITIONS};
 use crate::unicode::is_bert_punc;
-use crate::wordpiece::Tokenizer;
+use crate::wordpiece::{Tokenizer, WordSpan};
 use window::{fit_seq, pack_windows};
 
 #[cfg(test)]
@@ -70,6 +70,10 @@ pub struct RestoredWord {
     pub label: String,
     /// Softmax of the argmax logit on the first subtoken. Not calibrated.
     pub score: f32,
+    /// Byte offset of this word in the original restore input (inclusive).
+    pub start: usize,
+    /// Byte offset of this word in the original restore input (exclusive).
+    pub end: usize,
 }
 
 pub(crate) fn join_words(words: &[RestoredWord]) -> String {
@@ -94,18 +98,19 @@ pub(crate) fn restore_words(
             "input larger than {MAX_RESTORE_BYTES} bytes"
         )));
     }
-    let mut words = tokenizer.split_words(text);
+    let mut spans = tokenizer.split_word_spans(text);
     if opts.strip_punct {
-        words.retain(|w| !is_punct_word(w));
+        spans = strip_isolated_punct(spans);
     }
     if opts.lowercase {
-        for w in &mut words {
-            *w = w.to_lowercase();
+        for w in &mut spans {
+            w.text = w.text.to_lowercase();
         }
     }
-    if words.is_empty() {
+    if spans.is_empty() {
         return Ok(Vec::new());
     }
+    let words: Vec<String> = spans.iter().map(|s| s.text.clone()).collect();
     let (window, overlap) = opts.resolve(model.max_position_embeddings())?;
     let windows = pack_windows(tokenizer, &words, window, overlap);
     let default_lid = model.default_label();
@@ -135,15 +140,17 @@ pub(crate) fn restore_words(
     }
 
     let id2 = model.id2label();
-    let mut out = Vec::with_capacity(words.len());
-    for (word, pred) in words.into_iter().zip(preds.iter()) {
+    let mut out = Vec::with_capacity(spans.len());
+    for (span, pred) in spans.into_iter().zip(preds.iter()) {
         let label = id2.get(pred.label).map(String::as_str).unwrap_or("LOWER_O");
-        let text = process_token(&word, label);
+        let rendered = process_token(&span.text, label);
         out.push(RestoredWord {
-            word,
-            text,
+            word: span.text,
+            text: rendered,
             label: label.to_string(),
             score: pred.score,
+            start: span.start,
+            end: span.end,
         });
     }
     Ok(out)
@@ -151,6 +158,46 @@ pub(crate) fn restore_words(
 
 fn is_punct_word(w: &str) -> bool {
     !w.is_empty() && w.chars().all(is_bert_punc)
+}
+
+fn is_ascii_digits(w: &str) -> bool {
+    !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Drop isolated punctuation, but keep `-` between words and `.` between digits.
+fn strip_isolated_punct(spans: Vec<WordSpan>) -> Vec<WordSpan> {
+    let drop: Vec<bool> = (0..spans.len()).map(|i| drop_punct_at(&spans, i)).collect();
+    spans
+        .into_iter()
+        .zip(drop)
+        .filter_map(|(s, d)| if d { None } else { Some(s) })
+        .collect()
+}
+
+fn drop_punct_at(spans: &[WordSpan], i: usize) -> bool {
+    let w = &spans[i].text;
+    if !is_punct_word(w) {
+        return false;
+    }
+    let left = i.checked_sub(1).and_then(|j| spans.get(j));
+    let right = spans.get(i + 1);
+    let between = matches!(
+        (left, right),
+        (Some(l), Some(r)) if !is_punct_word(&l.text) && !is_punct_word(&r.text)
+    );
+    if !between {
+        return true;
+    }
+    if w == "-" {
+        return false;
+    }
+    if w == "."
+        && left.is_some_and(|l| is_ascii_digits(&l.text))
+        && right.is_some_and(|r| is_ascii_digits(&r.text))
+    {
+        return false;
+    }
+    true
 }
 
 #[cfg(test)]

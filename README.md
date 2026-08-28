@@ -71,6 +71,7 @@ let ru = p.restore_with("привет как дела", RestoreOpts {
     ..RestoreOpts::default()
 })?;
 let words = p.restore_words("привет как дела")?;
+// words[i].start / end are byte offsets into the original string
 ```
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
@@ -102,10 +103,11 @@ WordPiece tokenizer; this engine loads it:
 
 ```sh
 RUPUNCT_REPO=RUPunct/RUPunct_big scripts/fetch-model.sh
+# -> ~/.rupunct/RUPunct_big  (small stays in ~/.rupunct/punct)
+rupunct -m ~/.rupunct/RUPunct_big --text "привет как дела"
 ```
 
-(Uses HuggingFace `main` unless `RUPUNCT_REVISION` is set. SHA-256 pins are
-only for `RUPunct_small` at the commit in `scripts/fetch-model.sh`.)
+SHA-256 pins are only for `RUPunct_small`. Override dest with `RUPUNCT_MODEL`.
 
 ## Weights
 

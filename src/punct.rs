@@ -47,11 +47,10 @@ impl Punctuator {
                 "input larger than {MAX_RESTORE_BYTES} bytes"
             )));
         }
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
+        if text.trim().is_empty() {
             return Ok(Vec::new());
         }
-        restore::restore_words(&self.model, &self.tokenizer, trimmed, opts)
+        restore::restore_words(&self.model, &self.tokenizer, text, opts)
     }
 
     /// Like [`restore`](Self::restore), but on inference failure returns `text` unchanged.
@@ -71,7 +70,12 @@ impl Punctuator {
 
     #[cfg(test)]
     pub(crate) fn debug_logits(&self, text: &str) -> Result<crate::tensor::Tensor> {
-        let words = self.tokenizer.split_words(text);
+        let words: Vec<String> = self
+            .tokenizer
+            .split_word_spans(text)
+            .into_iter()
+            .map(|w| w.text)
+            .collect();
         let (ids, mask, _) = self.tokenizer.encode_words(&words, true).into_parts();
         let tt = vec![0u32; ids.len()];
         self.model.forward(&ids, &tt, &mask)

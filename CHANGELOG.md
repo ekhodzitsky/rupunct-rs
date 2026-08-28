@@ -5,6 +5,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-28
+
+### Added
+
+- `RestoredWord.start` / `end` byte offsets into the original input (JSONL
+  `words` includes them). Leading whitespace is no longer trimmed before
+  restore, so offsets match the caller string.
+- `scripts/fetch-model.sh` installs `RUPunct_big` under `~/.rupunct/RUPunct_big`
+  (does not overwrite small) and pins that repo's 2024-05-01 revision.
+
+### Changed
+
+- `--strip-punct` keeps `-` between words and `.` between digits (`кто-то`,
+  `42.5`). Isolated commas/periods are still dropped.
+- CLI oneshot cap shares `MAX_RESTORE_BYTES`. CI installs `llvm-tools-preview`.
+
 ## [0.8.0] - 2026-08-28
 
 ### Added

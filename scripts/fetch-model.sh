@@ -3,23 +3,36 @@
 # Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
 # with torch + safetensors.
 #
-# Default: RUPunct/RUPunct_small at the pinned revision (SHA-256 verified).
-# Optional: RUPUNCT_REPO=RUPunct/RUPunct_big (same 33 labels, BERT-base; SHA skipped).
+# Default: RUPunct/RUPunct_small at the pinned revision (SHA-256 verified)
+# into ~/.rupunct/punct. RUPunct_big goes to ~/.rupunct/RUPunct_big so it does
+# not overwrite small. Override dest with RUPUNCT_MODEL.
 set -eu
 
 PINNED_REPO="RUPunct/RUPunct_small"
 # Pin: RUPunct/RUPunct_small @ 2024-05-01 (config hidden=312, max_pos=2048).
 PINNED_REVISION="97aa9196b313e931424a5401fa42bc69dd15acd9"
+BIG_REPO="RUPunct/RUPunct_big"
+# Pin: RUPunct/RUPunct_big @ 2024-05-01.
+BIG_REVISION="d05f73afd84b57a45b83238c35b866bc625fe247"
 REPO="${RUPUNCT_REPO:-$PINNED_REPO}"
 if [ -n "${RUPUNCT_REVISION:-}" ]; then
   REVISION="$RUPUNCT_REVISION"
 elif [ "$REPO" = "$PINNED_REPO" ]; then
   REVISION="$PINNED_REVISION"
+elif [ "$REPO" = "$BIG_REPO" ]; then
+  REVISION="$BIG_REVISION"
 else
-  # Do not reuse the small commit SHA on another repo (it 404s).
   REVISION="main"
 fi
-DEST="${RUPUNCT_MODEL:-${HOME:?HOME unset}/.rupunct/punct}"
+HOME_DIR="${HOME:?HOME unset}"
+if [ -n "${RUPUNCT_MODEL:-}" ]; then
+  DEST="$RUPUNCT_MODEL"
+elif [ "$REPO" = "$PINNED_REPO" ]; then
+  DEST="$HOME_DIR/.rupunct/punct"
+else
+  REPO_TAIL=$(echo "$REPO" | awk -F/ '{print $NF}')
+  DEST="$HOME_DIR/.rupunct/$REPO_TAIL"
+fi
 mkdir -p "$DEST"
 
 HF_BIN=""

@@ -13,7 +13,7 @@ use crate::limits::{MAX_ADDED_TOKENS, MAX_TOKENIZER_BYTES, MAX_WORD_CHARS, read_
 use crate::tokenizer_json::{
     Normalizer, TokenizerFile, parse_normalizer, parse_post_processor, parse_pre_tokenizer,
 };
-use crate::unicode::bert_pre_tokenize;
+use crate::unicode::bert_pre_tokenize_spans;
 
 mod scan;
 use scan::{AddedToken, Span};
@@ -28,6 +28,13 @@ pub(crate) struct Tokenizer {
     added_tokens: Vec<AddedToken>,
     cls: Option<u32>,
     sep: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WordSpan {
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 pub(crate) struct Encoding {
@@ -183,19 +190,46 @@ impl Tokenizer {
     }
 
     /// Surface words after added-token extraction, normalization, and pre-tokenization.
+    #[cfg(test)]
     pub(crate) fn split_words(&self, text: &str) -> Vec<String> {
+        self.split_word_spans(text)
+            .into_iter()
+            .map(|w| w.text)
+            .collect()
+    }
+
+    /// Like [`split_words`](Self::split_words) with byte offsets into `text`.
+    pub(crate) fn split_word_spans(&self, text: &str) -> Vec<WordSpan> {
         let mut words = Vec::new();
         for span in self.extract_added(text) {
             match span {
-                Span::Added(idx) => words.push(self.added_tokens[idx].content.clone()),
-                Span::Text(slice) => {
-                    let normalized = self.normalize(slice);
+                Span::Added { idx, start, end } => words.push(WordSpan {
+                    text: self.added_tokens[idx].content.clone(),
+                    start,
+                    end,
+                }),
+                Span::Text {
+                    text: slice,
+                    start: orig,
+                } => {
+                    let (normalized, byte_map) = self.normalize_mapped(slice, orig);
                     if self.bert_pre_tokenizer {
-                        for w in bert_pre_tokenize(&normalized) {
-                            words.push(w.to_string());
+                        for (a, b) in bert_pre_tokenize_spans(&normalized) {
+                            if b == 0 || a >= byte_map.len() {
+                                continue;
+                            }
+                            words.push(WordSpan {
+                                text: normalized[a..b].to_string(),
+                                start: byte_map[a].0,
+                                end: byte_map[b - 1].1,
+                            });
                         }
-                    } else if !normalized.is_empty() {
-                        words.push(normalized);
+                    } else if !normalized.is_empty() && !byte_map.is_empty() {
+                        words.push(WordSpan {
+                            text: normalized,
+                            start: byte_map[0].0,
+                            end: byte_map[byte_map.len() - 1].1,
+                        });
                     }
                 }
             }
