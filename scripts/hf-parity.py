@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compare rupunct to HuggingFace RUPunct_small (local oracle, not CI).
 
-Needs transformers, torch, a built `rupunct`, and weights at $RUPUNCT_MODEL
-or ~/.rupunct/punct.
+Needs transformers, torch, a built `rupunct`, and RUPunct_small at
+$RUPUNCT_MODEL or ~/.rupunct/punct (not the product default RUPunct_big).
 
 Per case `expect`:
   text   — splice/CLI string equals per-word `process_token` join (not NER grouping)

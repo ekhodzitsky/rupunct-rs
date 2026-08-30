@@ -20,7 +20,7 @@ Arguments:
 
 Options:
   -m, --model-dir <DIR>  Weights dir [env: RUPUNCT_MODEL]
-                         [default: ~/.rupunct/punct]
+                         [default: ~/.rupunct/RUPunct_big]
       --text <TEXT>      One-shot source (`-` reads stdin)
   -f, --file <PATH>      Read one-shot source from a file (`-` = stdin)
       --jsonl            JSONL worker (default when stdin is not a TTY)

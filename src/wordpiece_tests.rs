@@ -89,14 +89,17 @@ fn test_golden_fixtures_replay_reduced_vocab() {
 }
 
 /// Same replay against a full RUPunct `tokenizer.json`. Guards against the
-/// reduced vocab masking a divergence. Enable with weights at
-/// `$RUPUNCT_MODEL` or `~/.rupunct/punct`.
+/// reduced vocab masking a divergence. Enable with RUPunct_small at
+/// `~/.rupunct/punct`.
 #[test]
-#[ignore = "requires tokenizer.json in $RUPUNCT_MODEL or ~/.rupunct/punct"]
+#[ignore = "requires RUPunct_small tokenizer at ~/.rupunct/punct"]
 fn test_golden_fixtures_replay_full_vocab() {
-    let path = crate::default_model_dir().join(crate::TOKENIZER_FILE);
+    let Some(dir) = crate::model::live_small_model_dir() else {
+        panic!("ignored test requires RUPunct_small tokenizer at ~/.rupunct/punct");
+    };
+    let path = dir.join(crate::TOKENIZER_FILE);
     if !path.is_file() {
-        panic!("ignored test requires tokenizer.json at $RUPUNCT_MODEL or ~/.rupunct/punct");
+        panic!("ignored test requires tokenizer.json at ~/.rupunct/punct");
     }
     let tokenizer = Tokenizer::from_file(&path).expect("load real tokenizer.json");
     assert_replays(&tokenizer);

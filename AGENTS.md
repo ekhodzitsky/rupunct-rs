@@ -12,7 +12,7 @@ scripts/fetch-model.sh
 cargo build --release
 rupunct --text "привет как дела"
 rupunct "привет как дела"
-rupunct -m ~/.rupunct/punct --jsonl
+rupunct -m ~/.rupunct/RUPunct_big --jsonl
 ```
 
 JSONL (stdin/stdout, one object per line; default when stdin is not a TTY):
@@ -36,11 +36,13 @@ without those flags is JSONL; `--text -` is oneshot from stdin.
 `--text` / `[TEXT]` / `--file` is one-shot. Non-TTY stdin without those
 flags is the JSONL worker (`--jsonl` forces it). Weights:
 `model.safetensors` + `tokenizer.json` + `config.json`.
-`RUPUNCT_MODEL` overrides the default `~/.rupunct/punct` (`USERPROFILE` on
+`RUPUNCT_MODEL` overrides the default `~/.rupunct/RUPunct_big` (`USERPROFILE` on
 Windows if `HOME` is unset). Non-UTF-8 argv is usage (exit 2).
 
-Compatible checkpoint: HuggingFace `RUPunct/RUPunct_small` at the SHA pinned
-in `scripts/fetch-model.sh` (convert `pytorch_model.bin` → safetensors).
+Default checkpoint: HuggingFace `RUPunct/RUPunct_big` (pinned revision in
+`scripts/fetch-model.sh`). Small: `RUPUNCT_REPO=RUPunct/RUPunct_small` →
+`~/.rupunct/punct` (SHA-256 verified). Convert `pytorch_model.bin` →
+safetensors.
 
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Explicit
@@ -52,8 +54,8 @@ the original string (newlines/tabs/hyphens stay). `--strip-punct` /
 `--lowercase` / `RestoreOpts.lowercase` lowercases words before encode.
 JSONL success frames include `words` (`word` / `text` / `label` / `score` /
 `start` / `end` byte offsets). `Punctuator::restore_words` is the library
-form. `RUPUNCT_REPO=RUPunct/RUPunct_big` installs under
-`~/.rupunct/RUPunct_big` (does not overwrite small).
+form. `RUPUNCT_REPO=RUPunct/RUPunct_small` installs under
+`~/.rupunct/punct` (does not overwrite big).
 
 Direct crate deps stay tiny: `serde_json`, `memmap2`, and `gemm` only on
 non-macOS (Accelerate on macOS). Safetensors and `tokenizer.json` are parsed

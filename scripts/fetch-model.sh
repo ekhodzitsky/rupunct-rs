@@ -1,11 +1,11 @@
 #!/bin/sh
-# Install a pinned RUPunct checkpoint into $RUPUNCT_MODEL or ~/.rupunct/punct.
+# Install a pinned RUPunct checkpoint into $RUPUNCT_MODEL or ~/.rupunct/<name>.
 # Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
 # with torch + safetensors.
 #
-# Default: RUPunct/RUPunct_small at the pinned revision (SHA-256 verified)
-# into ~/.rupunct/punct. RUPunct_big goes to ~/.rupunct/RUPunct_big so it does
-# not overwrite small. Override dest with RUPUNCT_MODEL.
+# Default: RUPunct/RUPunct_big at the pinned revision into ~/.rupunct/RUPunct_big.
+# RUPunct_small goes to ~/.rupunct/punct (SHA-256 verified) and does not overwrite
+# big. Override dest with RUPUNCT_MODEL.
 set -eu
 
 PINNED_REPO="RUPunct/RUPunct_small"
@@ -14,7 +14,7 @@ PINNED_REVISION="97aa9196b313e931424a5401fa42bc69dd15acd9"
 BIG_REPO="RUPunct/RUPunct_big"
 # Pin: RUPunct/RUPunct_big @ 2024-05-01.
 BIG_REVISION="d05f73afd84b57a45b83238c35b866bc625fe247"
-REPO="${RUPUNCT_REPO:-$PINNED_REPO}"
+REPO="${RUPUNCT_REPO:-$BIG_REPO}"
 if [ -n "${RUPUNCT_REVISION:-}" ]; then
   REVISION="$RUPUNCT_REVISION"
 elif [ "$REPO" = "$PINNED_REPO" ]; then

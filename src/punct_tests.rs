@@ -122,10 +122,12 @@ fn restore_windows_long_input() {
 }
 
 #[test]
-#[ignore = "requires RUPunct weights at $RUPUNCT_MODEL or ~/.rupunct/punct"]
+#[ignore = "requires RUPunct_small at ~/.rupunct/punct"]
 fn test_restore_reference_string() {
-    let Some(dir) = crate::model::live_model_dir() else {
-        panic!("ignored test requires weights at $RUPUNCT_MODEL or ~/.rupunct/punct");
+    let Some(dir) = crate::model::live_small_model_dir() else {
+        panic!(
+            "ignored test requires RUPunct_small at ~/.rupunct/punct (RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh)"
+        );
     };
     let punct = Punctuator::load(&dir).expect("load punct model");
     let out = punct
@@ -243,10 +245,12 @@ fn encoder_logits_depend_on_input() {
 }
 
 #[test]
-#[ignore = "requires RUPunct weights at $RUPUNCT_MODEL or ~/.rupunct/punct"]
+#[ignore = "requires RUPunct_small at ~/.rupunct/punct"]
 fn test_restore_short_greeting() {
-    let Some(dir) = crate::model::live_model_dir() else {
-        panic!("ignored test requires weights at $RUPUNCT_MODEL or ~/.rupunct/punct");
+    let Some(dir) = crate::model::live_small_model_dir() else {
+        panic!(
+            "ignored test requires RUPunct_small at ~/.rupunct/punct (RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh)"
+        );
     };
     let punct = Punctuator::load(&dir).expect("load punct model");
     assert_eq!(

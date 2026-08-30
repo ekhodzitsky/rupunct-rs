@@ -1,8 +1,9 @@
 //! On-device Russian punctuation and casing restoration.
 //!
-//! One checkpoint resident. No network. Compatible with
-//! [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
+//! One checkpoint resident. No network. Default weights:
+//! [RUPunct/RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big)
 //! (`aggregation_strategy="first"` on each word, not HuggingFace entity grouping).
+//! Also loads [RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small).
 
 mod bert;
 mod blas;
@@ -34,7 +35,9 @@ mod fixture;
 
 pub use error::{Error, Result};
 pub use labels::process_token;
-pub use model::{CONFIG_FILE, MODEL_FILE, TOKENIZER_FILE, default_model_dir};
+pub use model::{
+    CONFIG_FILE, DEFAULT_CHECKPOINT_DIR, MODEL_FILE, TOKENIZER_FILE, default_model_dir,
+};
 pub use punct::Punctuator;
 pub use restore::{RestoreOpts, RestoredWord};
 

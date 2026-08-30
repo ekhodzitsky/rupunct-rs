@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::RestoreOpts;
-use crate::model::live_model_dir;
+use crate::model::live_small_model_dir;
 use std::path::Path;
 
 fn golden_path() -> std::path::PathBuf {
@@ -33,10 +33,12 @@ fn opts_from_flags(flags: &[serde_json::Value]) -> RestoreOpts {
 }
 
 #[test]
-#[ignore = "requires RUPunct weights at $RUPUNCT_MODEL or ~/.rupunct/punct"]
+#[ignore = "requires RUPunct_small at ~/.rupunct/punct"]
 fn test_hf_parity_golden() {
-    let Some(dir) = live_model_dir() else {
-        panic!("ignored test requires weights at $RUPUNCT_MODEL or ~/.rupunct/punct");
+    let Some(dir) = live_small_model_dir() else {
+        panic!(
+            "ignored test requires RUPunct_small at ~/.rupunct/punct (RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh)"
+        );
     };
     let punct = Punctuator::load(&dir).expect("load punct model");
     let raw = std::fs::read_to_string(golden_path()).expect("read hf_parity_golden.json");

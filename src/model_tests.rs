@@ -13,21 +13,24 @@ fn env_override_wins() {
 #[test]
 fn blank_env_falls_back_to_home() {
     let dir = model_dir_from(Some("  ".into()), Some(PathBuf::from("/home/user")));
-    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/punct"));
+    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/RUPunct_big"));
 }
 
 #[test]
 fn missing_env_uses_home() {
     let dir = model_dir_from(None, Some(PathBuf::from("/home/user")));
-    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/punct"));
+    assert_eq!(dir, PathBuf::from("/home/user/.rupunct/RUPunct_big"));
 }
 
 #[test]
-fn no_home_uses_relative_punct() {
-    assert_eq!(model_dir_from(None, None), PathBuf::from("punct"));
+fn no_home_uses_relative_default_checkpoint() {
+    assert_eq!(
+        model_dir_from(None, None),
+        PathBuf::from(DEFAULT_CHECKPOINT_DIR)
+    );
     assert_eq!(
         model_dir_from(Some(String::new()), None),
-        PathBuf::from("punct")
+        PathBuf::from(DEFAULT_CHECKPOINT_DIR)
     );
 }
 
@@ -56,7 +59,11 @@ fn home_dir_prefers_home_then_userprofile() {
 }
 
 #[test]
-fn default_model_dir_is_absolute_or_punct() {
+fn default_model_dir_is_absolute_or_checkpoint() {
     let dir = default_model_dir();
-    assert!(dir.ends_with("punct") || dir.as_os_str() == "punct" || dir.is_absolute());
+    assert!(
+        dir.ends_with(DEFAULT_CHECKPOINT_DIR)
+            || dir.as_os_str() == DEFAULT_CHECKPOINT_DIR
+            || dir.is_absolute()
+    );
 }

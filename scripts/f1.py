@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Word-level punctuation/casing F1 of rupunct vs in-tree gold.
 
-Not CI. Needs a built `rupunct` and weights ($RUPUNCT_MODEL or ~/.rupunct/punct).
+Not CI. Needs a built `rupunct` and weights ($RUPUNCT_MODEL or ~/.rupunct/RUPunct_big).
 Gold stays punctuated; the harness lowercases and drops isolated marks, restores,
 then scores trailing punctuation and casing on whitespace words.
 
@@ -44,7 +44,7 @@ def model_dir() -> Path:
     if env:
         return Path(env)
     home = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or ".")
-    return home / ".rupunct" / "punct"
+    return home / ".rupunct" / "RUPunct_big"
 
 
 def find_bin() -> str | None:

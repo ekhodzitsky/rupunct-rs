@@ -3,20 +3,22 @@
 [![CI](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rustc-1.88%2B-orange?logo=rust)](rust-toolchain.toml)
-[![Checkpoint](https://img.shields.io/badge/checkpoint-RUPunct__small-yellow)](https://huggingface.co/RUPunct/RUPunct_small)
+[![Checkpoint](https://img.shields.io/badge/checkpoint-RUPunct__big-yellow)](https://huggingface.co/RUPunct/RUPunct_big)
 
 On-device **Russian punctuation and casing** restoration. One binary. No cloud.
 
 Input is unpunctuated Russian text. Output is the same words with punctuation
 and capitalization restored. Inference is a local BERT token-classifier
-compatible with [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
+compatible with [RUPunct/RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big)
+(default) and [RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
 (`aggregation_strategy="first"` on **each word**, not HuggingFace entity
 grouping of consecutive identical tags).
 
 Weights stay off git. The engine never opens a network socket.
 
-The **checkpoint** is a 3-layer BERT-tiny, not SOTA restore. This repo is a
-faithful on-device engine for that checkpoint (and `RUPunct_big`).
+Default checkpoint is **RUPunct_big** (12×768). `RUPunct_small` (3×312) is
+the CPU/size option, not SOTA restore. This repo is a faithful on-device
+engine for both.
 
 ## Contents
 
@@ -39,7 +41,7 @@ cargo build --release
 ./target/release/rupunct --text "привет как дела"
 ```
 
-Checkpoint layout (three files in `$RUPUNCT_MODEL` or `~/.rupunct/punct`):
+Checkpoint layout (three files in `$RUPUNCT_MODEL` or `~/.rupunct/RUPunct_big`):
 
 `model.safetensors` · `tokenizer.json` · `config.json`
 
@@ -62,7 +64,7 @@ Not on crates.io (`publish = false`). Do not `cargo install` from a registry.
 | `--strip-punct` | drop isolated punctuation tokens (off by default) |
 | `--lowercase` | lowercase words before the encoder (off by default) |
 | `--lossy` | on restore failure, emit the original text (exit **0**) |
-| `--max-seq` | BERT window, ≥ 3 and ≤ checkpoint (`2048` on small, `512` on big) |
+| `--max-seq` | BERT window, ≥ 3 and ≤ checkpoint (`512` on big, `2048` on small) |
 
 ```
   0  success (--lossy restore failure is success)
@@ -119,12 +121,11 @@ original string instead. Output is spliced into the original string (newlines,
 tabs, and hyphens stay; `--strip-punct` deletes those spans).
 
 Inputs longer than 512 WordPiece tokens (or `max_position_embeddings` if
-smaller) are split on word boundaries with a 64-token overlap. The small
-checkpoint allows **2048** positions; the default 512 window is a speed choice,
-not bit-identical to a full-length HuggingFace `pipeline` on long inputs.
-`--max-seq 2048` matches **small**; big allows **512**. An explicit `--max-seq`
-larger than the checkpoint is an error (the library still clamps `RestoreOpts`
-for tiny test models). `--overlap` must be smaller than `--max-seq`.
+smaller) are split on word boundaries with a 64-token overlap. Default **big**
+allows **512** positions (matches the default window). Small allows **2048**;
+`--max-seq 2048` is small-only. An explicit `--max-seq` larger than the
+checkpoint is an error (the library still clamps `RestoreOpts` for tiny test
+models). `--overlap` must be smaller than `--max-seq`.
 
 ## Quality
 
@@ -163,30 +164,32 @@ be F1 gold.
 | big | Common Voice ru | 400 | 62% | 0.83 | 98% |
 | big | all | 800 | 58% | 0.85 | 98% |
 
-Default stays **small** (111 MB, 2048 positions, CPU). Big is the quality
-option (~711 MB F32, `max_position_embeddings` **512**, `lowercase=true`
-tokenizer, same 33 labels). Live goldens (`cargo test --lib -- --ignored`)
-lock the small checkpoint’s strings; they are not a linguistic oracle.
+Default is **big** (~711 MB F32, `max_position_embeddings` **512**,
+`lowercase=true` tokenizer). Small is the CPU option (111 MB, 2048 positions).
+Same 33 labels. Live goldens (`cargo test --lib -- --ignored`) lock **small**
+strings at `~/.rupunct/punct`; they are not a linguistic oracle.
 
 ```sh
 scripts/fetch-eval.py
 scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
-RUPUNCT_REPO=RUPunct/RUPunct_big scripts/fetch-model.sh
-# -> ~/.rupunct/RUPunct_big  (small stays in ~/.rupunct/punct)
-rupunct -m ~/.rupunct/RUPunct_big --text "привет как дела"
-RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
+# small (does not overwrite big):
+RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh
+rupunct -m ~/.rupunct/punct --text "привет как дела"
 ```
 
 SHA-256 pins are only for `RUPunct_small`. Override dest with `RUPUNCT_MODEL`.
 
 ## Weights
 
-Download [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
+Download [RUPunct/RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big)
 (MIT) and convert `pytorch_model.bin` → `model.safetensors`:
 
 ```sh
 scripts/fetch-model.sh
+# -> ~/.rupunct/RUPunct_big
 ```
+
+Small: `RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh` → `~/.rupunct/punct`.
 
 Override the search path with `--model-dir` / `-m` or `RUPUNCT_MODEL`. Do not
 commit `*.safetensors`.

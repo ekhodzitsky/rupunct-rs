@@ -5,10 +5,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-30
+
 ### Changed
 
-- README: badges, contents, platform/install, and a CLI table. GitHub About and
-  topics match the one-liner. Cargo keywords include `asr`.
+- Default checkpoint is `RUPunct/RUPunct_big` at `~/.rupunct/RUPunct_big`.
+  `scripts/fetch-model.sh` downloads big unless `RUPUNCT_REPO=RUPunct/RUPunct_small`
+  (still `~/.rupunct/punct`, SHA-256 pinned). Ignored HF goldens still load
+  small. `--max-seq` default 512 matches big `max_position_embeddings`.
 
 ## [0.12.1] - 2026-08-28
 
