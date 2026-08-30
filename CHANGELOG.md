@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-31
+
 ### Added
 
 - `restore_batch` and the JSONL worker run independent texts in parallel
