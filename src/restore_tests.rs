@@ -99,3 +99,35 @@ fn fit_seq_noop_when_short() {
     fit_seq(&mut ids, &mut mask, &mut wids, 8);
     assert_eq!(ids, vec![2, 5, 3]);
 }
+
+#[test]
+fn worker_count_caps() {
+    assert_eq!(worker_count(0, 0), 1);
+    assert_eq!(worker_count(8, 1), 1);
+    assert_eq!(worker_count(1, 10), 1);
+    assert_eq!(worker_count(8, 3), 3);
+    let auto = worker_count(0, 64);
+    assert!((1..=64).contains(&auto), "{auto}");
+}
+
+#[test]
+fn merge_pred_higher_score_wins_tie_keeps_first() {
+    let mut slot = None;
+    let a = WordPred {
+        label: 1,
+        score: 0.4,
+    };
+    let b = WordPred {
+        label: 2,
+        score: 0.4,
+    };
+    let c = WordPred {
+        label: 3,
+        score: 0.5,
+    };
+    merge_pred(&mut slot, a);
+    merge_pred(&mut slot, b);
+    assert_eq!(slot, Some(a));
+    merge_pred(&mut slot, c);
+    assert_eq!(slot, Some(c));
+}

@@ -65,6 +65,7 @@ Not on crates.io (`publish = false`). Do not `cargo install` from a registry.
 | `--lowercase` | lowercase words before the encoder (off by default) |
 | `--lossy` | on restore failure, emit the original text (exit **0**) |
 | `--max-seq` | BERT window, ≥ 3 and ≤ checkpoint (`512` on big, `2048` on small) |
+| `--threads` | parallel restore windows, ≥ 1 (default: available parallelism) |
 
 ```
   0  success (--lossy restore failure is success)
@@ -121,7 +122,9 @@ original string instead. Output is spliced into the original string (newlines,
 tabs, and hyphens stay; `--strip-punct` deletes those spans).
 
 Inputs longer than 512 WordPiece tokens (or `max_position_embeddings` if
-smaller) are split on word boundaries with a 64-token overlap. Default **big**
+smaller) are split on word boundaries with a 64-token overlap. Independent
+windows run in parallel (`std::thread`; `--threads` / `RestoreOpts.threads`,
+`0` = auto). Default **big**
 allows **512** positions (matches the default window). Small allows **2048**;
 `--max-seq 2048` is small-only. An explicit `--max-seq` larger than the
 checkpoint is an error (the library still clamps `RestoreOpts` for tiny test

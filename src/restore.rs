@@ -10,10 +10,8 @@ use crate::limits::{MAX_RESTORE_BYTES, MIN_POSITIONS};
 use crate::unicode::is_bert_punc;
 use crate::wordpiece::{Tokenizer, WordSpan};
 use splice::{Edit, splice};
-use window::{fit_seq, pack_windows};
-
-#[cfg(test)]
 pub(crate) use window::Window;
+use window::{fit_seq, pack_windows};
 
 /// On-device window cap in tokens (including specials). The checkpoint may
 /// allow more (`max_position_embeddings`); 512 keeps attention cheap.
@@ -33,6 +31,8 @@ pub struct RestoreOpts {
     pub strip_punct: bool,
     /// Lowercase words before the encoder (ASR-style).
     pub lowercase: bool,
+    /// Parallel BERT windows. `0` uses [`std::thread::available_parallelism`].
+    pub threads: usize,
 }
 
 impl Default for RestoreOpts {
@@ -42,6 +42,7 @@ impl Default for RestoreOpts {
             overlap_tokens: WINDOW_OVERLAP_TOKENS,
             strip_punct: false,
             lowercase: false,
+            threads: 0,
         }
     }
 }
@@ -137,21 +138,19 @@ pub(crate) fn restore_parts(
         label: default_lid,
         score: 0.0,
     };
+    let jobs = worker_count(opts.threads, windows.len());
+    let window_preds = run_windows(
+        model,
+        tokenizer,
+        &spans,
+        &windows,
+        window,
+        default_lid,
+        jobs,
+    )?;
     let mut best = vec![None; spans.len()];
-    for w in &windows {
-        let slice = &spans[w.start..w.end];
-        let (mut ids, mut mask, mut word_ids) = tokenizer.encode_words(slice, true).into_parts();
-        fit_seq(&mut ids, &mut mask, &mut word_ids, window);
-        let token_type_ids = vec![0u32; ids.len()];
-        let logits = model.forward(&ids, &token_type_ids, &mask)?;
-        let seq = logits.dim(0)?;
-        let nlab = logits.dim(1)?;
-        let flat = logits.as_slice();
-        let per_token: Vec<_> = (0..seq)
-            .map(|t| argmax_softmax(&flat[t * nlab..(t + 1) * nlab]))
-            .collect();
-        let window_preds = first_subword_preds(&word_ids, &per_token, slice.len(), default_lid);
-        for (i, pred) in window_preds.into_iter().enumerate() {
+    for (w, preds) in windows.iter().zip(window_preds) {
+        for (i, pred) in preds.into_iter().enumerate() {
             let gi = w.start + i;
             if gi >= best.len() {
                 continue;
@@ -176,6 +175,97 @@ pub(crate) fn restore_parts(
         });
     }
     Ok((out, dropped))
+}
+
+fn worker_count(requested: usize, n_windows: usize) -> usize {
+    if n_windows <= 1 {
+        return 1;
+    }
+    let want = if requested == 0 {
+        std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(1)
+    } else {
+        requested
+    };
+    want.min(n_windows).max(1)
+}
+
+fn infer_window(
+    model: &BertForTokenClassification,
+    tokenizer: &Tokenizer,
+    spans: &[WordSpan],
+    w: &Window,
+    max_pos: usize,
+    default_lid: usize,
+) -> Result<Vec<WordPred>> {
+    let slice = &spans[w.start..w.end];
+    let (mut ids, mut mask, mut word_ids) = tokenizer.encode_words(slice, true).into_parts();
+    fit_seq(&mut ids, &mut mask, &mut word_ids, max_pos);
+    let token_type_ids = vec![0u32; ids.len()];
+    let logits = model.forward(&ids, &token_type_ids, &mask)?;
+    let seq = logits.dim(0)?;
+    let nlab = logits.dim(1)?;
+    let flat = logits.as_slice();
+    let per_token: Vec<_> = (0..seq)
+        .map(|t| argmax_softmax(&flat[t * nlab..(t + 1) * nlab]))
+        .collect();
+    Ok(first_subword_preds(
+        &word_ids,
+        &per_token,
+        slice.len(),
+        default_lid,
+    ))
+}
+
+fn run_windows(
+    model: &BertForTokenClassification,
+    tokenizer: &Tokenizer,
+    spans: &[WordSpan],
+    windows: &[Window],
+    max_pos: usize,
+    default_lid: usize,
+    jobs: usize,
+) -> Result<Vec<Vec<WordPred>>> {
+    if jobs <= 1 {
+        return windows
+            .iter()
+            .map(|w| infer_window(model, tokenizer, spans, w, max_pos, default_lid))
+            .collect();
+    }
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(jobs);
+        for worker in 0..jobs {
+            handles.push(scope.spawn(move || -> Result<Vec<(usize, Vec<WordPred>)>> {
+                let mut out = Vec::new();
+                let mut i = worker;
+                while i < windows.len() {
+                    let preds =
+                        infer_window(model, tokenizer, spans, &windows[i], max_pos, default_lid)?;
+                    out.push((i, preds));
+                    i += jobs;
+                }
+                Ok(out)
+            }));
+        }
+        let mut slots: Vec<Option<Vec<WordPred>>> = (0..windows.len()).map(|_| None).collect();
+        for handle in handles {
+            let chunk = match handle.join() {
+                Ok(Ok(chunk)) => chunk,
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err(Error::model("restore window thread panicked")),
+            };
+            for (i, preds) in chunk {
+                if let Some(slot) = slots.get_mut(i) {
+                    *slot = Some(preds);
+                }
+            }
+        }
+        slots
+            .into_iter()
+            .map(|s| s.ok_or_else(|| Error::model("missing window predictions")))
+            .collect()
+    })
 }
 
 fn merge_pred(slot: &mut Option<WordPred>, pred: WordPred) {

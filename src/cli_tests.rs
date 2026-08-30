@@ -28,6 +28,7 @@ fn help_and_version_skip_model() {
     assert!(out.contains("Exit status:"), "{out}");
     assert!(out.contains("8 MiB"), "{out}");
     assert!(out.contains("not a TTY"), "{out}");
+    assert!(out.contains("--threads"), "{out}");
     let (r, out, _) = run_capture(&["-V"], "", true);
     assert!(r.is_ok());
     assert!(out.contains("rupunct "));
@@ -59,6 +60,13 @@ fn missing_flag_values() {
             .unwrap_err()
             .to_string()
             .contains("--model-dir")
+    );
+    assert!(
+        run_capture(&["--threads"], "", true)
+            .0
+            .unwrap_err()
+            .to_string()
+            .contains("--threads")
     );
 }
 
@@ -181,6 +189,7 @@ fn complete_bash_and_unknown_shell() {
     let (r, out, _) = run_capture(&["--complete", "bash"], "", true);
     assert!(r.is_ok(), "{r:?}");
     assert!(out.contains("complete -F _rupunct rupunct"), "{out}");
+    assert!(out.contains("--threads"), "{out}");
     let err = run_capture(&["--complete", "cmd"], "", true).0.unwrap_err();
     assert!(err.is_usage());
     let (r, out, _) = run_capture(&["--complete=zsh"], "", true);

@@ -47,7 +47,9 @@ safetensors.
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Explicit
 `--max-seq` larger than the checkpoint is a CLI error (library `RestoreOpts`
-still clamps). Overlap is
+still clamps). Two or more windows run in parallel (`std::thread`, no rayon),
+capped at `available_parallelism` (`--threads N` / `RestoreOpts.threads`,
+`0` = auto, `1` = sequential). Overlap is
 shrunk so each window commits at least one new word. Output is spliced into
 the original string (newlines/tabs/hyphens stay). `--strip-punct` /
 `RestoreOpts.strip_punct` deletes isolated punctuation spans.

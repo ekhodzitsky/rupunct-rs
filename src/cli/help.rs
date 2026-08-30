@@ -30,6 +30,8 @@ Options:
       --max-seq <N>      BERT window in tokens, ≥ 3 and ≤ checkpoint
                          [default: 512]
       --overlap <N>      Window overlap in tokens, < max-seq [default: 64]
+      --threads <N>      Parallel restore windows, ≥ 1
+                         [default: available parallelism]
       --complete <SHELL> Print completions: bash, zsh, or fish
   -h, --help             Print help
   -V, --version          Print version
@@ -65,7 +67,7 @@ pub(super) fn write_complete(shell: &str, out: &mut impl Write) -> Result<(), Cl
 }
 
 fn flags() -> &'static str {
-    "--help --version --text --model-dir --file --jsonl --lossy --strip-punct --lowercase --max-seq --overlap --complete -h -V -m -f"
+    "--help --version --text --model-dir --file --jsonl --lossy --strip-punct --lowercase --max-seq --overlap --threads --complete -h -V -m -f"
 }
 
 fn write_bash(out: &mut impl Write) -> std::io::Result<()> {
@@ -98,6 +100,7 @@ _arguments \\
   '--lowercase[lowercase words before restore]' \\
   '--max-seq[token window]:n:' \\
   '--overlap[token overlap]:n:' \\
+  '--threads[parallel restore windows]:n:' \\
   '--complete[shell completions]:shell:(bash zsh fish)' \\
   '*:text:'"
     )
@@ -117,6 +120,7 @@ complete -c rupunct -l strip-punct -d 'Drop existing punctuation tokens'
 complete -c rupunct -l lowercase -d 'Lowercase words before restore'
 complete -c rupunct -l max-seq -r -d 'BERT window in tokens'
 complete -c rupunct -l overlap -r -d 'Window overlap in tokens'
+complete -c rupunct -l threads -r -d 'Parallel restore windows'
 complete -c rupunct -l complete -xa 'bash zsh fish' -d 'Print completions'"
     )
 }

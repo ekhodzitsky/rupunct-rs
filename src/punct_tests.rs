@@ -122,6 +122,37 @@ fn restore_windows_long_input() {
 }
 
 #[test]
+fn restore_parallel_windows_match_sequential() {
+    let tmp = tempfile::tempdir().unwrap();
+    let spec = TinySpec {
+        max_pos: 8,
+        bias_label: LABEL_UPPER_PERIOD,
+        ..TinySpec::default()
+    };
+    write_tiny_model(tmp.path(), &spec).unwrap();
+    let p = Punctuator::load(tmp.path()).unwrap();
+    let text: String = (0..20)
+        .map(|i| format!("w{i}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let base = crate::RestoreOpts {
+        max_window_tokens: 8,
+        overlap_tokens: 7,
+        ..crate::RestoreOpts::default()
+    };
+    let seq = p
+        .restore_words_with(&text, crate::RestoreOpts { threads: 1, ..base })
+        .unwrap();
+    let par = p
+        .restore_words_with(&text, crate::RestoreOpts { threads: 8, ..base })
+        .unwrap();
+    let auto = p.restore_words_with(&text, base).unwrap();
+    assert_eq!(seq, par);
+    assert_eq!(seq, auto);
+    assert_eq!(seq.len(), 20);
+}
+
+#[test]
 #[ignore = "requires RUPunct_small at ~/.rupunct/punct"]
 fn test_restore_reference_string() {
     let Some(dir) = crate::model::live_small_model_dir() else {

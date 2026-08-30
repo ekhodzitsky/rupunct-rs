@@ -41,6 +41,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
     let mut lowercase = false;
     let mut max_seq: Option<usize> = None;
     let mut overlap: Option<usize> = None;
+    let mut threads: Option<usize> = None;
     let mut complete: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
@@ -114,6 +115,16 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
                 }
                 overlap = Some(parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?);
             }
+            "--threads" => {
+                if threads.is_some() {
+                    return Err("multiple --threads options".into());
+                }
+                let n = parse_usize(&need_value(args, &mut i, flag, inline)?, flag)?;
+                if n < 1 {
+                    return Err("--threads must be at least 1".into());
+                }
+                threads = Some(n);
+            }
             other if other.starts_with('-') && other != "-" => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -134,6 +145,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
             || lowercase
             || max_seq.is_some()
             || overlap.is_some()
+            || threads.is_some()
             || model_dir.is_some()
         {
             return Err("--complete cannot be combined with other options".into());
@@ -153,6 +165,7 @@ pub(super) fn parse(args: &[String], stdin_is_tty: bool) -> Result<Cmd, String> 
         overlap_tokens: ov,
         strip_punct,
         lowercase,
+        threads: threads.unwrap_or(0),
     };
 
     let sources = usize::from(text.is_some())
@@ -334,6 +347,7 @@ mod tests {
         assert!(parse(&a(&["--max-seq", "0"]), true).is_err());
         assert!(parse(&a(&["--max-seq", "2"]), true).is_err());
         assert!(parse(&a(&["--max-seq", "32"]), true).is_err());
+        assert!(parse(&a(&["--threads", "0", "--text", "x"]), true).is_err());
         assert!(
             parse(
                 &a(&["--max-seq", "32", "--overlap", "8", "--text", "x"]),
@@ -345,6 +359,14 @@ mod tests {
         assert!(parse(&a(&["--lossy", "--lossy", "--text", "x"]), true).is_err());
         assert!(parse(&a(&["--complete", "bash", "--lossy"]), true).is_err());
         assert!(parse(&a(&["--complete", "bash", "--strip-punct"]), true).is_err());
+        assert!(parse(&a(&["--complete", "bash", "--threads", "2"]), true).is_err());
+        assert!(
+            parse(
+                &a(&["--threads", "2", "--threads", "2", "--text", "x"]),
+                true
+            )
+            .is_err()
+        );
         assert!(parse(&a(&["--text=-"]), true).is_ok());
     }
 
@@ -356,5 +378,9 @@ mod tests {
         };
         assert_eq!(o.text, "--text");
         assert_eq!(o.opts.max_window_tokens, 128);
+        let Cmd::OneShot(o) = parse(&a(&["--threads", "4", "--text", "x"]), true).unwrap() else {
+            panic!("threads");
+        };
+        assert_eq!(o.opts.threads, 4);
     }
 }

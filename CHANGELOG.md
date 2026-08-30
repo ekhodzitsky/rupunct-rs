@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-31
+
+### Added
+
+- Overlapping restore windows run in parallel (`std::thread`, no rayon),
+  capped at `available_parallelism`. One-window inputs stay on the caller
+  thread. `--threads N` / `RestoreOpts.threads` (`0` = auto, `1` = sequential).
+  Overlap merge is unchanged: higher softmax wins; ties keep the earlier window.
+
 ## [0.13.0] - 2026-08-30
 
 ### Changed
