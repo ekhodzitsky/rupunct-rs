@@ -74,8 +74,22 @@ impl Punctuator {
     }
 
     /// [`restore_batch`](Self::restore_batch) with an explicit token window / overlap.
+    /// Independent texts share `RestoreOpts.threads` with window workers so
+    /// batch × windows does not oversubscribe.
     pub fn restore_batch_with(&self, texts: &[&str], opts: RestoreOpts) -> Result<Vec<String>> {
-        texts.iter().map(|t| self.restore_with(t, opts)).collect()
+        if texts.len() <= 1 {
+            return texts.iter().map(|t| self.restore_with(t, opts)).collect();
+        }
+        let (item_jobs, per) = crate::par::split_budget(opts.threads, texts.len());
+        let mut item_opts = opts;
+        item_opts.threads = per;
+        let parts =
+            crate::par::parallel_map(texts, item_jobs, |t| Ok(self.restore_with(t, item_opts)))?;
+        let mut out = Vec::with_capacity(parts.len());
+        for part in parts {
+            out.push(part?);
+        }
+        Ok(out)
     }
 
     pub(crate) fn max_position_embeddings(&self) -> usize {

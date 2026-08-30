@@ -101,16 +101,6 @@ fn fit_seq_noop_when_short() {
 }
 
 #[test]
-fn worker_count_caps() {
-    assert_eq!(worker_count(0, 0), 1);
-    assert_eq!(worker_count(8, 1), 1);
-    assert_eq!(worker_count(1, 10), 1);
-    assert_eq!(worker_count(8, 3), 3);
-    let auto = worker_count(0, 64);
-    assert!((1..=64).contains(&auto), "{auto}");
-}
-
-#[test]
 fn merge_pred_higher_score_wins_tie_keeps_first() {
     let mut slot = None;
     let a = WordPred {

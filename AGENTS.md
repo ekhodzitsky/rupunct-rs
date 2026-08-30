@@ -24,7 +24,9 @@ JSONL (stdin/stdout, one object per line; default when stdin is not a TTY):
 ```
 
 Request-level failures are `{"error": "…"}` frames; the loop continues.
-Only broken stdin/stdout aborts the worker. A TTY with no TEXT/`--text`/
+Only broken stdin/stdout aborts the worker. Independent JSONL requests share
+`--threads` (window workers use 1 thread each so batch × windows does not
+oversubscribe). Responses stay in input order. A TTY with no TEXT/`--text`/
 `--file`/`--jsonl` is a usage error (exit 2), not help. `--text` uses
 `restore` (exit 1 on load/restore failure). `--lossy` emits the original
 text and exits 0 on restore failure. JSONL empty `"text"` is an error
@@ -106,6 +108,7 @@ scripts/f1.py
 scripts/fetch-eval.py
 scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
+scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
 ```
 
 ## Versioning

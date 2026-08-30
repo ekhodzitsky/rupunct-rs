@@ -103,7 +103,16 @@ fn one_shot_file_and_stdin_dash() {
 fn jsonl_ready_and_frames() {
     let dir = tiny_dir();
     let stdin = "{\"text\":\"привет мир\"}\n\n{\"text\":\"\"}\nnot-json\n{\"foo\":1}\n{\"id\":7,\"text\":\"\"}\n";
-    let (r, out, _) = run_capture(&["--model-dir", dir.path().to_str().unwrap()], stdin, false);
+    let (r, out, _) = run_capture(
+        &[
+            "--model-dir",
+            dir.path().to_str().unwrap(),
+            "--threads",
+            "1",
+        ],
+        stdin,
+        false,
+    );
     assert!(r.is_ok(), "{r:?}");
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines[0], r#"{"ready":true}"#);
@@ -113,6 +122,21 @@ fn jsonl_ready_and_frames() {
     assert!(lines[4].contains("JSONL protocol error"), "{}", lines[4]);
     assert!(lines[5].contains(r#""id":7"#), "{}", lines[5]);
     assert!(lines[5].contains("text is empty"), "{}", lines[5]);
+}
+
+#[test]
+fn jsonl_parallel_preserves_order() {
+    let dir = tiny_dir();
+    let d = dir.path().to_str().unwrap();
+    let stdin = "{\"id\":1,\"text\":\"привет\"}\n{\"id\":2,\"text\":\"мир\"}\n{\"id\":3,\"text\":\"как\"}\n{\"id\":4,\"text\":\"дела\"}\n";
+    let (r, out, _) = run_capture(&["--model-dir", d, "--threads", "4"], stdin, false);
+    assert!(r.is_ok(), "{r:?}");
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], r#"{"ready":true}"#);
+    assert!(lines[1].contains(r#""id":1"#), "{}", lines[1]);
+    assert!(lines[2].contains(r#""id":2"#), "{}", lines[2]);
+    assert!(lines[3].contains(r#""id":3"#), "{}", lines[3]);
+    assert!(lines[4].contains(r#""id":4"#), "{}", lines[4]);
 }
 
 #[test]

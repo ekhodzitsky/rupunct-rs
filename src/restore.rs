@@ -138,7 +138,7 @@ pub(crate) fn restore_parts(
         label: default_lid,
         score: 0.0,
     };
-    let jobs = worker_count(opts.threads, windows.len());
+    let jobs = crate::par::worker_count(opts.threads, windows.len());
     let window_preds = run_windows(
         model,
         tokenizer,
@@ -177,20 +177,6 @@ pub(crate) fn restore_parts(
     Ok((out, dropped))
 }
 
-fn worker_count(requested: usize, n_windows: usize) -> usize {
-    if n_windows <= 1 {
-        return 1;
-    }
-    let want = if requested == 0 {
-        std::thread::available_parallelism()
-            .map(std::num::NonZeroUsize::get)
-            .unwrap_or(1)
-    } else {
-        requested
-    };
-    want.min(n_windows).max(1)
-}
-
 fn infer_window(
     model: &BertForTokenClassification,
     tokenizer: &Tokenizer,
@@ -227,44 +213,8 @@ fn run_windows(
     default_lid: usize,
     jobs: usize,
 ) -> Result<Vec<Vec<WordPred>>> {
-    if jobs <= 1 {
-        return windows
-            .iter()
-            .map(|w| infer_window(model, tokenizer, spans, w, max_pos, default_lid))
-            .collect();
-    }
-    std::thread::scope(|scope| {
-        let mut handles = Vec::with_capacity(jobs);
-        for worker in 0..jobs {
-            handles.push(scope.spawn(move || -> Result<Vec<(usize, Vec<WordPred>)>> {
-                let mut out = Vec::new();
-                let mut i = worker;
-                while i < windows.len() {
-                    let preds =
-                        infer_window(model, tokenizer, spans, &windows[i], max_pos, default_lid)?;
-                    out.push((i, preds));
-                    i += jobs;
-                }
-                Ok(out)
-            }));
-        }
-        let mut slots: Vec<Option<Vec<WordPred>>> = (0..windows.len()).map(|_| None).collect();
-        for handle in handles {
-            let chunk = match handle.join() {
-                Ok(Ok(chunk)) => chunk,
-                Ok(Err(err)) => return Err(err),
-                Err(_) => return Err(Error::model("restore window thread panicked")),
-            };
-            for (i, preds) in chunk {
-                if let Some(slot) = slots.get_mut(i) {
-                    *slot = Some(preds);
-                }
-            }
-        }
-        slots
-            .into_iter()
-            .map(|s| s.ok_or_else(|| Error::model("missing window predictions")))
-            .collect()
+    crate::par::parallel_map(windows, jobs, |w| {
+        infer_window(model, tokenizer, spans, w, max_pos, default_lid)
     })
 }
 

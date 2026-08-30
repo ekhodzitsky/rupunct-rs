@@ -19,6 +19,7 @@ mod limits;
 mod linear;
 mod matmul;
 mod model;
+mod par;
 mod punct;
 mod restore;
 mod shape;

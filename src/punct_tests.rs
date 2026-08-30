@@ -93,6 +93,35 @@ fn restore_batch_and_lossy() {
 }
 
 #[test]
+fn restore_batch_parallel_matches_sequential() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_tiny_model(tmp.path(), &TinySpec::default()).unwrap();
+    let p = Punctuator::load(tmp.path()).unwrap();
+    let texts: Vec<String> = (0..12).map(|i| format!("w{i}")).collect();
+    let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+    let seq = p
+        .restore_batch_with(
+            &refs,
+            crate::RestoreOpts {
+                threads: 1,
+                ..crate::RestoreOpts::default()
+            },
+        )
+        .unwrap();
+    let par = p
+        .restore_batch_with(
+            &refs,
+            crate::RestoreOpts {
+                threads: 8,
+                ..crate::RestoreOpts::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(seq, par);
+    assert_eq!(seq.len(), 12);
+}
+
+#[test]
 fn restore_windows_long_input() {
     let tmp = tempfile::tempdir().unwrap();
     let spec = TinySpec {

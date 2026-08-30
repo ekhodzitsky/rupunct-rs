@@ -4,13 +4,14 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 use crate::limits::MAX_RESTORE_BYTES;
-use crate::{Punctuator, RestoreOpts, RestoredWord, default_model_dir};
+use crate::{Punctuator, RestoreOpts, default_model_dir};
 
 mod args;
 mod capped;
 mod help;
-use args::{Cmd, OneShot, Worker, parse};
-use capped::{NextLine, ReadAll, read_capped_line, read_capped_to_string};
+mod jsonl;
+use args::{Cmd, OneShot, parse};
+use capped::{ReadAll, read_capped_to_string};
 use help::{write_complete, write_help};
 
 /// Reject oversized JSONL frames so a single line cannot exhaust RAM.
@@ -59,7 +60,7 @@ pub fn run() -> i32 {
     let tty = io::stdin().is_terminal();
     match run_from(
         &args,
-        io::stdin().lock(),
+        io::BufReader::new(io::stdin()),
         &mut io::stdout(),
         &mut io::stderr(),
         tty,
@@ -85,7 +86,7 @@ pub(crate) fn run_from<R, W, E>(
     stdin_is_tty: bool,
 ) -> Result<(), CliError>
 where
-    R: BufRead,
+    R: BufRead + Send,
     W: Write,
     E: Write,
 {
@@ -94,11 +95,15 @@ where
         Cmd::Version => writeln!(stdout, "rupunct {}", env!("CARGO_PKG_VERSION")).map_err(io_err),
         Cmd::Complete(shell) => write_complete(&shell, stdout),
         Cmd::OneShot(cmd) => oneshot(cmd, stdin, stdout),
-        Cmd::Jsonl(cmd) => jsonl(cmd, stdin, stdout),
+        Cmd::Jsonl(cmd) => jsonl::run(cmd, stdin, stdout),
     }
 }
 
-fn check_window(punct: &Punctuator, opts: RestoreOpts, explicit: bool) -> Result<(), CliError> {
+pub(super) fn check_window(
+    punct: &Punctuator,
+    opts: RestoreOpts,
+    explicit: bool,
+) -> Result<(), CliError> {
     if !explicit {
         return Ok(());
     }
@@ -112,7 +117,7 @@ fn check_window(punct: &Punctuator, opts: RestoreOpts, explicit: bool) -> Result
     Ok(())
 }
 
-fn load(dir: Option<PathBuf>) -> Result<Punctuator, CliError> {
+pub(super) fn load(dir: Option<PathBuf>) -> Result<Punctuator, CliError> {
     let dir = dir.unwrap_or_else(default_model_dir);
     Punctuator::load(&dir)
         .map_err(|e| CliError::fail(format!("load punct model from {}: {e}", dir.display())))
@@ -160,45 +165,6 @@ where
     writeln!(stdout, "{out}").map_err(io_err)
 }
 
-fn jsonl<R, W>(cmd: Worker, stdin: R, stdout: &mut W) -> Result<(), CliError>
-where
-    R: BufRead,
-    W: Write,
-{
-    let punct = load(cmd.model_dir)?;
-    check_window(&punct, cmd.opts, cmd.explicit_max_seq)?;
-    writeln!(stdout, r#"{{"ready":true}}"#).map_err(io_err)?;
-    stdout.flush().map_err(io_err)?;
-    let mut stdin = stdin;
-    loop {
-        match read_capped_line(&mut stdin, MAX_JSONL_LINE).map_err(io_err)? {
-            NextLine::Eof => break,
-            NextLine::TooLong => {
-                writeln!(stdout, "{}", json_error(None, "line too long")).map_err(io_err)?;
-            }
-            NextLine::InvalidUtf8 => {
-                writeln!(stdout, "{}", json_error(None, "invalid UTF-8")).map_err(io_err)?;
-            }
-            NextLine::Ok(line) => {
-                if line.trim().is_empty() {
-                    continue;
-                }
-                match handle(&punct, &line, cmd.lossy, cmd.opts) {
-                    Ok((id, out, words)) => {
-                        writeln!(stdout, "{}", json_ok(id.as_ref(), &out, &words))
-                            .map_err(io_err)?;
-                    }
-                    Err((id, e)) => {
-                        writeln!(stdout, "{}", json_error(id.as_ref(), &e)).map_err(io_err)?;
-                    }
-                }
-            }
-        }
-        stdout.flush().map_err(io_err)?;
-    }
-    Ok(())
-}
-
 fn read_all(mut r: impl std::io::Read) -> Result<String, CliError> {
     match read_capped_to_string(&mut r, MAX_ONESHOT).map_err(io_err)? {
         ReadAll::Ok(s) => Ok(s),
@@ -209,75 +175,10 @@ fn read_all(mut r: impl std::io::Read) -> Result<String, CliError> {
     }
 }
 
-type HandleOk = (Option<serde_json::Value>, String, Vec<RestoredWord>);
-type HandleErr = (Option<serde_json::Value>, String);
-
-fn handle(
-    punct: &Punctuator,
-    line: &str,
-    lossy: bool,
-    opts: RestoreOpts,
-) -> Result<HandleOk, HandleErr> {
-    let v: serde_json::Value =
-        serde_json::from_str(line).map_err(|_| (None, "JSONL protocol error".to_string()))?;
-    let id = v.get("id").cloned();
-    let text = v
-        .get("text")
-        .and_then(|t| t.as_str())
-        .ok_or_else(|| (id.clone(), "JSONL protocol error".to_string()))?;
-    if text.trim().is_empty() {
-        return Err((id, "text is empty".to_string()));
-    }
-    match punct.restore_bundle(text, opts) {
-        Ok((out, words)) => Ok((id, out, words)),
-        Err(_) if lossy => Ok((id, text.to_string(), Vec::new())),
-        Err(e) => Err((id, e.to_string())),
-    }
-}
-
-fn json_ok(id: Option<&serde_json::Value>, text: &str, words: &[RestoredWord]) -> String {
-    let mut map = serde_json::Map::new();
-    if let Some(id) = id {
-        map.insert("id".into(), id.clone());
-    }
-    map.insert("text".into(), serde_json::Value::String(text.to_string()));
-    let arr: Vec<serde_json::Value> = words
-        .iter()
-        .map(|w| {
-            serde_json::json!({
-                "word": w.word,
-                "text": w.text,
-                "label": w.label,
-                "score": w.score,
-                "start": w.start,
-                "end": w.end,
-            })
-        })
-        .collect();
-    map.insert("words".into(), serde_json::Value::Array(arr));
-    serde_json::Value::Object(map).to_string()
-}
-
 #[cfg(test)]
-fn json_text(id: Option<&serde_json::Value>, text: &str) -> String {
-    frame(id, "text", text)
-}
+use jsonl::{json_error, json_text};
 
-fn json_error(id: Option<&serde_json::Value>, msg: &str) -> String {
-    frame(id, "error", msg)
-}
-
-fn frame(id: Option<&serde_json::Value>, key: &str, value: &str) -> String {
-    let Ok(v) = serde_json::to_string(value) else {
-        return r#"{"error":"internal error"}"#.to_string();
-    };
-    match id {
-        Some(id) => format!(r#"{{"id":{id},"{key}":{v}}}"#),
-        None => format!(r#"{{"{key}":{v}}}"#),
-    }
-}
-
-fn io_err(e: io::Error) -> CliError {
+pub(super) fn io_err(e: io::Error) -> CliError {
     CliError::fail(format!("I/O failed ({})", e.kind()))
 }
 

@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `restore_batch` and the JSONL worker run independent texts in parallel
+  (`std::thread`). `--threads` is a shared budget: batch items and window
+  workers do not multiply. JSONL responses stay in input order. `--threads 1`
+  is sequential.
+- `scripts/f1.py --system kontur` scores `kontur-ai/sbert_punc_case_ru` on the
+  same gold as rupunct (torch+transformers, not CI). On the 800-sentence
+  cache `RUPunct_big` beats it (punct micro-F1 0.85 vs 0.79, exact 58% vs 49%).
+
 ## [0.14.0] - 2026-08-31
 
 ### Added

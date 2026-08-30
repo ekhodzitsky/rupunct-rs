@@ -94,7 +94,8 @@ is the worker. `--jsonl` forces it. `--text -` is oneshot from stdin.
 
 Request-level failures (bad JSON, empty `text`, restore error, oversized line,
 invalid UTF-8) are `{"error":"…"}` frames; the loop continues. Optional `"id"`
-is echoed. Only a broken stdin/stdout aborts the worker. JSONL `--lossy` emits
+is echoed. Independent requests run in parallel (`--threads`); responses stay
+in input order. Only a broken stdin/stdout aborts the worker. JSONL `--lossy` emits
 `{"text":…}` instead of `{"error":…}`. Empty JSONL `"text"` is an error frame;
 oneshot empty input is identity.
 
@@ -114,6 +115,7 @@ let ru = p.restore_with("привет как дела", RestoreOpts {
     ..RestoreOpts::default()
 })?;
 let words = p.restore_words("привет как дела")?;
+let batch = p.restore_batch(&["привет", "как дела"])?;
 // words[i].start / end are byte offsets into the original string
 ```
 
@@ -167,6 +169,16 @@ be F1 gold.
 | big | Common Voice ru | 400 | 62% | 0.83 | 98% |
 | big | all | 800 | 58% | 0.85 | 98% |
 
+Same 800 sentences, `scripts/f1.py --system` (not CI):
+
+| system | exact | punct micro-F1 | case acc. |
+|--------|-------|----------------|-----------|
+| rupunct `RUPunct_big` | 58% | 0.85 | 98% |
+| [kontur-ai/sbert_punc_case_ru](https://huggingface.co/kontur-ai/sbert_punc_case_ru) | 49% | 0.79 | 98% |
+
+Kontur predicts only `. , ?` (no `! : ; …`). Its training domain is interview
+ASR; this gold is written UD + read-speech prompts.
+
 Default is **big** (~711 MB F32, `max_position_embeddings` **512**,
 `lowercase=true` tokenizer). Small is the CPU option (111 MB, 2048 positions).
 Same 33 labels. Live goldens (`cargo test --lib -- --ignored`) lock **small**
@@ -175,6 +187,7 @@ strings at `~/.rupunct/punct`; they are not a linguistic oracle.
 ```sh
 scripts/fetch-eval.py
 scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
+scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
 # small (does not overwrite big):
 RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh
 rupunct -m ~/.rupunct/punct --text "привет как дела"

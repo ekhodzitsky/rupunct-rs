@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Word-level punctuation/casing F1 of rupunct vs in-tree gold.
+"""Word-level punctuation/casing F1 vs gold.
 
-Not CI. Needs a built `rupunct` and weights ($RUPUNCT_MODEL or ~/.rupunct/RUPunct_big).
-Gold stays punctuated; the harness lowercases and drops isolated marks, restores,
-then scores trailing punctuation and casing on whitespace words.
+Not CI. Gold stays punctuated; the harness lowercases and drops isolated marks,
+restores, then scores trailing punctuation and casing on whitespace words.
 
   scripts/f1.py
   RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py
+  scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
+  scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
+
+`--system rupunct` needs a built binary and weights.
+`--system kontur` needs torch+transformers (`kontur-ai/sbert_punc_case_ru`).
 """
 from __future__ import annotations
 
@@ -141,6 +145,86 @@ class JsonlWorker:
             self.proc.kill()
 
 
+def kontur_render(token: str, label: str) -> str:
+    if label.startswith("UPPER_TOTAL_"):
+        cased = token.upper()
+        rest = label[len("UPPER_TOTAL_") :]
+    elif label.startswith("UPPER_"):
+        cased = token[:1].upper() + token[1:] if token else token
+        rest = label[len("UPPER_") :]
+    elif label.startswith("LOWER_"):
+        cased = token
+        rest = label[len("LOWER_") :]
+    else:
+        return token
+    suf = {"O": "", "PERIOD": ".", "COMMA": ",", "QUESTION": "?"}.get(rest, "")
+    return cased + suf
+
+
+class KonturWorker:
+    """Official first-subtoken restore for kontur-ai/sbert_punc_case_ru."""
+
+    def __init__(self) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForTokenClassification, AutoTokenizer
+        except ImportError as e:
+            raise SystemExit(
+                "f1 --system kontur needs torch and transformers "
+                "(Python 3.12 venv; not CI)"
+            ) from e
+        repo = "kontur-ai/sbert_punc_case_ru"
+        self.torch = torch
+        self.tokenizer = AutoTokenizer.from_pretrained(repo, strip_accents=False)
+        self.model = AutoModelForTokenClassification.from_pretrained(repo)
+        self.model.eval()
+        self.device = torch.device("cpu")
+        self.model.to(self.device)
+        self.id2 = {}
+        for k, v in self.model.config.id2label.items():
+            try:
+                self.id2[int(k)] = v
+            except ValueError:
+                continue
+
+    def restore(self, text: str, _cid: str) -> str:
+        return self._punctuate(text)
+
+    def close(self) -> None:
+        return None
+
+    def _punctuate(self, text: str) -> str:
+        text = text.strip().lower()
+        words = text.split()
+        if not words:
+            return text
+        enc = self.tokenizer(words, is_split_into_words=True)
+        ids = enc["input_ids"]
+        if len(ids) > 512:
+            mid = max(1, len(words) // 2)
+            left = self._punctuate(" ".join(words[:mid]))
+            right = self._punctuate(" ".join(words[mid:]))
+            return f"{left} {right}".strip()
+        mask = enc["attention_mask"]
+        with self.torch.no_grad():
+            logits = self.model(
+                input_ids=self.torch.tensor([ids], device=self.device),
+                attention_mask=self.torch.tensor([mask], device=self.device),
+            ).logits
+        pred = logits.argmax(dim=-1)[0].tolist()
+        word_ids = enc.word_ids()
+        out: list[str] = []
+        for i, word in enumerate(words):
+            try:
+                pos = word_ids.index(i)
+            except ValueError:
+                out.append(word)
+                continue
+            label = self.id2.get(int(pred[pos]), "LOWER_O")
+            out.append(kontur_render(word, label))
+        return " ".join(out)
+
+
 def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     p = tp / (tp + fp) if tp + fp else 0.0
     r = tp / (tp + fn) if tp + fn else 0.0
@@ -187,24 +271,29 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     ap.add_argument("--kind", choices=["written", "asr", "all"], default="all")
+    ap.add_argument("--system", choices=["rupunct", "kontur"], default="rupunct")
     ap.add_argument("--quiet", action="store_true", help="print only the summary JSON")
     args = ap.parse_args()
 
     md = model_dir()
-    if not (md / "config.json").is_file():
-        print(f"f1: missing {md}", file=sys.stderr)
-        return 2
-    bin_path = find_bin()
-    if not bin_path:
-        print("f1: rupunct not on PATH (set RUPUNCT_BIN)", file=sys.stderr)
-        return 2
-
     spec = json.loads(args.gold.read_text(encoding="utf-8"))
     cases = spec["cases"]
     if args.kind != "all":
         cases = [c for c in cases if c.get("kind") == args.kind]
 
-    worker = JsonlWorker(bin_path, md, [])
+    if args.system == "kontur":
+        worker = KonturWorker()
+        model_name = "kontur-ai/sbert_punc_case_ru"
+    else:
+        if not (md / "config.json").is_file():
+            print(f"f1: missing {md}", file=sys.stderr)
+            return 2
+        bin_path = find_bin()
+        if not bin_path:
+            print("f1: rupunct not on PATH (set RUPUNCT_BIN)", file=sys.stderr)
+            return 2
+        worker = JsonlWorker(bin_path, md, [])
+        model_name = str(md)
     punct_pairs: list[tuple[str, str]] = []
     case_pairs: list[tuple[str, str]] = []
     exact = 0
@@ -276,7 +365,8 @@ def main() -> int:
             k: {"n": len(v), "exact": sum(v), "exact_rate": round(sum(v) / len(v), 4)}
             for k, v in sorted(by_kind.items())
         },
-        "model": str(md),
+        "model": model_name,
+        "system": args.system,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
