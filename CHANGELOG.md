@@ -5,6 +5,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/f1.py --system silero` scores Silero TE (`v2_4lang_q`, lan=ru) on the
+  same gold. On the 800-sentence cache `RUPunct_big` beats it (punct micro-F1
+  0.85 vs 0.75, exact 58% vs 37%). Quantized TE needs `qnnpack` on Apple
+  Silicon; some hyphen inputs crash inside the package and score as identity.
+
 ## [0.15.0] - 2026-08-31
 
 ### Added

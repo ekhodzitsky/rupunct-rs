@@ -109,6 +109,7 @@ scripts/fetch-eval.py
 scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
+scripts/f1.py --system silero --gold ~/.rupunct/eval/f1_gold.json --quiet
 ```
 
 ## Versioning

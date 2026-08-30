@@ -175,9 +175,10 @@ Same 800 sentences, `scripts/f1.py --system` (not CI):
 |--------|-------|----------------|-----------|
 | rupunct `RUPunct_big` | 58% | 0.85 | 98% |
 | [kontur-ai/sbert_punc_case_ru](https://huggingface.co/kontur-ai/sbert_punc_case_ru) | 49% | 0.79 | 98% |
+| [Silero TE](https://github.com/snakers4/silero-models) | 37% | 0.75 | 97% |
 
-Kontur predicts only `. , ?` (no `! : ; …`). Its training domain is interview
-ASR; this gold is written UD + read-speech prompts.
+Kontur predicts only `. , ?` (no `! : ; …`). Silero TE predicts `.,-!?—`.
+Training domains differ; this gold is written UD + read-speech prompts.
 
 Default is **big** (~711 MB F32, `max_position_embeddings` **512**,
 `lowercase=true` tokenizer). Small is the CPU option (111 MB, 2048 positions).
@@ -188,6 +189,7 @@ strings at `~/.rupunct/punct`; they are not a linguistic oracle.
 scripts/fetch-eval.py
 scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
 scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
+scripts/f1.py --system silero --gold ~/.rupunct/eval/f1_gold.json --quiet
 # small (does not overwrite big):
 RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh
 rupunct -m ~/.rupunct/punct --text "привет как дела"

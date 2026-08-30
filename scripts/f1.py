@@ -8,9 +8,11 @@ restores, then scores trailing punctuation and casing on whitespace words.
   RUPUNCT_MODEL=~/.rupunct/RUPunct_big scripts/f1.py
   scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
   scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
+  scripts/f1.py --system silero --gold ~/.rupunct/eval/f1_gold.json --quiet
 
 `--system rupunct` needs a built binary and weights.
 `--system kontur` needs torch+transformers (`kontur-ai/sbert_punc_case_ru`).
+`--system silero` needs torch (`snakers4/silero-models` TE, cached under ~/.rupunct).
 """
 from __future__ import annotations
 
@@ -225,6 +227,52 @@ class KonturWorker:
         return " ".join(out)
 
 
+SILERO_TE_URL = "https://models.silero.ai/te_models/v2_4lang_q.pt"
+SILERO_TE_NAME = "v2_4lang_q.pt"
+
+
+class SileroWorker:
+    """snakers4/silero-models text enhancement (`enhance_text`, lan=ru)."""
+
+    def __init__(self) -> None:
+        try:
+            import torch
+            from torch import package
+        except ImportError as e:
+            raise SystemExit(
+                "f1 --system silero needs torch (Python 3.12 venv; not CI)"
+            ) from e
+        engines = torch.backends.quantized.supported_engines
+        if "fbgemm" in engines:
+            torch.backends.quantized.engine = "fbgemm"
+        elif "qnnpack" in engines:
+            torch.backends.quantized.engine = "qnnpack"
+        home = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or ".")
+        dest = home / ".rupunct" / SILERO_TE_NAME
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.is_file() or dest.stat().st_size < 10_000:
+            torch.hub.download_url_to_file(SILERO_TE_URL, str(dest), progress=True)
+        imp = package.PackageImporter(str(dest))
+        self.model = imp.load_pickle("te_model", "model")
+
+    def restore(self, text: str, _cid: str) -> str:
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                out = self.model.enhance_text(text, "ru")
+        except (IndexError, RuntimeError, ValueError):
+            return text
+        if not isinstance(out, str):
+            out = str(out)
+        return out
+
+    def close(self) -> None:
+        return None
+
+
 def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     p = tp / (tp + fp) if tp + fp else 0.0
     r = tp / (tp + fn) if tp + fn else 0.0
@@ -271,7 +319,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     ap.add_argument("--kind", choices=["written", "asr", "all"], default="all")
-    ap.add_argument("--system", choices=["rupunct", "kontur"], default="rupunct")
+    ap.add_argument(
+        "--system", choices=["rupunct", "kontur", "silero"], default="rupunct"
+    )
     ap.add_argument("--quiet", action="store_true", help="print only the summary JSON")
     args = ap.parse_args()
 
@@ -284,6 +334,9 @@ def main() -> int:
     if args.system == "kontur":
         worker = KonturWorker()
         model_name = "kontur-ai/sbert_punc_case_ru"
+    elif args.system == "silero":
+        worker = SileroWorker()
+        model_name = "snakers4/silero-models te"
     else:
         if not (md / "config.json").is_file():
             print(f"f1: missing {md}", file=sys.stderr)
