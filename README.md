@@ -1,5 +1,10 @@
 # rupunct
 
+[![CI](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rustc-1.88%2B-orange?logo=rust)](rust-toolchain.toml)
+[![Checkpoint](https://img.shields.io/badge/checkpoint-RUPunct__small-yellow)](https://huggingface.co/RUPunct/RUPunct_small)
+
 On-device **Russian punctuation and casing** restoration. One binary. No cloud.
 
 Input is unpunctuated Russian text. Output is the same words with punctuation
@@ -10,24 +15,71 @@ grouping of consecutive identical tags).
 
 Weights stay off git. The engine never opens a network socket.
 
-## Quick start
+The **checkpoint** is a 3-layer BERT-tiny, not SOTA restore. This repo is a
+faithful on-device engine for that checkpoint (and `RUPunct_big`).
+
+## Contents
+
+- [Install](#install)
+- [CLI](#cli)
+- [JSONL worker](#jsonl-worker)
+- [Library](#library)
+- [Quality](#quality)
+- [Weights](#weights)
+- [License](#license)
+
+## Install
+
+Rust **1.88+** (`rust-toolchain.toml`). macOS uses Accelerate; Linux and Windows
+use `gemm`.
 
 ```sh
-# Checkpoint layout (three files):
-#   model.safetensors  tokenizer.json  config.json
-# Default dir: $RUPUNCT_MODEL, else ~/.rupunct/punct
 scripts/fetch-model.sh
-
 cargo build --release
+./target/release/rupunct --text "привет как дела"
+```
+
+Checkpoint layout (three files in `$RUPUNCT_MODEL` or `~/.rupunct/punct`):
+
+`model.safetensors` · `tokenizer.json` · `config.json`
+
+Not on crates.io (`publish = false`). Do not `cargo install` from a registry.
+
+## CLI
+
+```sh
 ./target/release/rupunct --text "привет меня зовут анна"
 ./target/release/rupunct "привет как дела"
 ./target/release/rupunct --strip-punct --lowercase --text "привет, как дела"
 ./target/release/rupunct --complete bash >> ~/.bash_completion
 ```
 
-A TTY with no `TEXT` / `--text` / `--file` / `--jsonl` is a **usage error**
-(exit **2**), not help. Stdin that is not a TTY (pipe **or** redirect) without
-those flags is the JSONL worker. Oneshot from stdin: `--text -` / `--file -`.
+| Flag / mode | Behavior |
+|-------------|----------|
+| One-shot | `--text`, `[TEXT]`, or `--file` (`-` = stdin) |
+| Worker | non-TTY stdin, or `--jsonl` |
+| TTY with no input | usage error **2**, not help |
+| `--strip-punct` | drop isolated punctuation tokens (off by default) |
+| `--lowercase` | lowercase words before the encoder (off by default) |
+| `--lossy` | on restore failure, emit the original text (exit **0**) |
+| `--max-seq` | BERT window, ≥ 3 and ≤ checkpoint (`2048` on small, `512` on big) |
+
+```
+  0  success (--lossy restore failure is success)
+  1  load or restore failure
+  2  usage error
+```
+
+`--text` / `--file` / stdin bodies are capped at **8 MiB**. JSONL frames at **1 MiB**.
+Non-UTF-8 argv is usage (exit **2**).
+
+`--strip-punct` fixes `привет, как` → double marks. `--lowercase` fixes `ООО` →
+`Ооо` titlecase. Both default **off** so the HuggingFace card path is unchanged.
+
+## JSONL worker
+
+Stdin that is not a TTY (pipe or redirect) without `--text` / `--file` / `[TEXT]`
+is the worker. `--jsonl` forces it. `--text -` is oneshot from stdin.
 
 ```text
 {"ready":true}
@@ -39,26 +91,14 @@ those flags is the JSONL worker. Oneshot from stdin: `--text -` / `--file -`.
 
 Request-level failures (bad JSON, empty `text`, restore error, oversized line,
 invalid UTF-8) are `{"error":"…"}` frames; the loop continues. Optional `"id"`
-is echoed on the response. Only a broken stdin/stdout aborts the worker.
+is echoed. Only a broken stdin/stdout aborts the worker. JSONL `--lossy` emits
+`{"text":…}` instead of `{"error":…}`. Empty JSONL `"text"` is an error frame;
+oneshot empty input is identity.
 
-`--text` prints the restored line or exits **1** on load/restore failure.
-`--lossy` emits the original text and exits **0** on restore failure (load
-failure is still **1**). JSONL `--lossy` emits `{"text":…}` instead of
-`{"error":…}`. Empty JSONL `"text"` is an error frame; oneshot empty input
-is identity. One-shot `--text` / `--file` / stdin bodies are capped at 8 MiB.
+Each `words[]` entry has `word` / `text` / `label` / `score` / `start` / `end`
+(byte offsets into the original string). `score` is softmax, not calibrated.
 
-`--strip-punct` drops isolated punctuation tokens (fixes `привет, как` →
-`Привет! , как`). `--lowercase` lowercases words before the encoder (fixes
-`ООО` → `Ооо` titlecase). Both default **off** so the HuggingFace card path
-is unchanged.
-
-```
-  0  success (--lossy restore failure is success)
-  1  load or restore failure
-  2  usage error
-```
-
-Library:
+## Library
 
 ```rust
 use rupunct::{Punctuator, RestoreOpts, default_model_dir};
@@ -75,22 +115,21 @@ let words = p.restore_words("привет как дела")?;
 ```
 
 `restore` returns `Err` on inference failure. `restore_lossy` returns the
-original string instead. `restore_words` keeps per-word `label` and softmax
-`score` (not calibrated). Output is spliced into the original string
-(newlines, tabs, and hyphens are preserved; `--strip-punct` deletes those
-punctuation spans). Inputs longer than 512 WordPiece tokens (or the checkpoint
-`max_position_embeddings` if smaller) are split on word boundaries with a
-64-token overlap. The small checkpoint allows 2048 positions; the default
-512 window is a speed choice, not bit-identical to a full-length HuggingFace
-`pipeline` on long inputs. `--max-seq 2048` matches **small**; big allows 512.
-An explicit `--max-seq` larger than the checkpoint is an error (the library
-still clamps `RestoreOpts` for tiny test models). `--max-seq` is ≥ 3 and
-`--overlap` must be smaller.
+original string instead. Output is spliced into the original string (newlines,
+tabs, and hyphens stay; `--strip-punct` deletes those spans).
+
+Inputs longer than 512 WordPiece tokens (or `max_position_embeddings` if
+smaller) are split on word boundaries with a 64-token overlap. The small
+checkpoint allows **2048** positions; the default 512 window is a speed choice,
+not bit-identical to a full-length HuggingFace `pipeline` on long inputs.
+`--max-seq 2048` matches **small**; big allows **512**. An explicit `--max-seq`
+larger than the checkpoint is an error (the library still clamps `RestoreOpts`
+for tiny test models). `--overlap` must be smaller than `--max-seq`.
 
 ## Quality
 
 `RUPunct_small` is a 3-layer BERT-tiny (hidden 312, ~111 MB F32). The card
-targets simple CPU texts, not SOTA restore. Typical outputs on the pinned
+targets simple CPU texts, **not** SOTA restore. Typical outputs on the pinned
 checkpoint:
 
 | Input | Output |
@@ -99,7 +138,7 @@ checkpoint:
 | `ты пойдешь со мной в кино` | `Ты пойдешь со мной в кино?` |
 | already-punctuated `привет, как дела` | double marks unless `--strip-punct` |
 
-Local HuggingFace parity (`scripts/hf-parity.py`, not CI) is 39/39 on
+Local HuggingFace parity (`scripts/hf-parity.py`, not CI) is **39/39** on
 `tests/fixtures/hf_parity_golden.json`: first-subtoken labels match the encoder.
 Space-separated inputs also match a per-word `process_token` join. Splice keeps
 hyphens, newlines, and tabs; the join does not. Consecutive identical tags are
@@ -155,3 +194,4 @@ commit `*.safetensors`.
 ## License
 
 MIT (engine). Checkpoint: see the RUPunct model card before commercial use.
+Eval corpora used by `scripts/fetch-eval.py` stay off git; see [NOTICE](NOTICE).

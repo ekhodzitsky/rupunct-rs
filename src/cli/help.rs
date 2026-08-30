@@ -8,6 +8,7 @@ pub(super) fn write_help(out: &mut impl Write) -> std::io::Result<()> {
         "\
 rupunct {}
 On-device Russian punctuation and casing restoration. No network.
+Compatible with RUPunct BERT (small / big).
 
 Usage:
   rupunct [OPTIONS] [TEXT]

@@ -5,6 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- README: badges, contents, platform/install, and a CLI table. GitHub About and
+  topics match the one-liner. Cargo keywords include `asr`.
+
 ## [0.12.1] - 2026-08-28
 
 ### Fixed

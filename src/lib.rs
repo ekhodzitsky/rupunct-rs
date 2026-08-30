@@ -1,8 +1,8 @@
 //! On-device Russian punctuation and casing restoration.
 //!
-//! BERT token-classification compatible with
+//! One checkpoint resident. No network. Compatible with
 //! [RUPunct/RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
-//! (`aggregation_strategy="first"`). One checkpoint resident. No network.
+//! (`aggregation_strategy="first"` on each word, not HuggingFace entity grouping).
 
 mod bert;
 mod blas;
