@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-31
+
 ### Added
 
 - `scripts/f1.py --system silero` scores Silero TE (`v2_4lang_q`, lan=ru) on the
