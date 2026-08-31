@@ -30,6 +30,10 @@ jobs:
         run: python3 scripts/check-file-size.py
       - name: changelog
         run: python3 scripts/check-changelog.py
+      - name: convert-q8
+        run: |
+          python3 -m pip install --user numpy
+          python3 scripts/test-convert-q8.py
 
   windows:
     runs-on: windows-latest

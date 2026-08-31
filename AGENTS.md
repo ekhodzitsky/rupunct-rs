@@ -94,6 +94,7 @@ cargo test --lib --bins
 cargo clippy --all-targets -- -D warnings
 python3 scripts/check-file-size.py
 python3 scripts/check-changelog.py
+python3 scripts/test-convert-q8.py
 cargo llvm-cov --lib --bins --fail-under-lines 90
 ```
 

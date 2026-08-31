@@ -13,6 +13,7 @@ cargo test --lib --bins
 cargo clippy --all-targets -- -D warnings
 python3 scripts/check-file-size.py
 python3 scripts/check-changelog.py
+python3 scripts/test-convert-q8.py
 ```
 
 Live restore against real weights is local only (`cargo test --lib -- --ignored`).
