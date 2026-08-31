@@ -43,11 +43,21 @@ def should_quant(name: str, shape: list[int], arr: np.ndarray) -> bool:
         return False
     if arr.size < MIN_ELEMENTS or len(shape) < 2:
         return False
-    return int(shape[-1]) % QK == 0
+    return int(shape[-1]) > 0
+
+
+def pad_k(k: int) -> int:
+    return (k + QK - 1) // QK * QK
 
 
 def quant_q8_0(w: np.ndarray) -> bytes:
-    blocks = w.astype(np.float32, copy=False).reshape(-1, QK)
+    w = np.ascontiguousarray(w, dtype=np.float32)
+    k = int(w.shape[-1])
+    pk = pad_k(k)
+    if pk != k:
+        pad = [(0, 0)] * (w.ndim - 1) + [(0, pk - k)]
+        w = np.pad(w, pad)
+    blocks = w.reshape(-1, QK)
     amax = np.max(np.abs(blocks), axis=1)
     d = np.where(amax > 0.0, amax / QMAX, 0.0).astype(np.float16)
     d32 = d.astype(np.float32)
@@ -126,9 +136,13 @@ def convert(src: Path, dst: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--is-q8", action="store_true", help="exit 0 if src is already packed")
     ap.add_argument("src", type=Path)
     ap.add_argument("dst", type=Path, nargs="?")
     args = ap.parse_args()
+    if args.is_q8:
+        header, _, _ = parse_st(args.src)
+        return 0 if is_q8(header) else 1
     dst = args.dst
     if dst is None:
         dst = args.src.with_name("model.q8.safetensors")

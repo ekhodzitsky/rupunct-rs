@@ -45,7 +45,7 @@ Windows if `HOME` is unset). Non-UTF-8 argv is usage (exit 2).
 
 Default checkpoint: HuggingFace `RUPunct/RUPunct_big` (pinned revision in
 `scripts/fetch-model.sh`), packed Q8_0. Small: `RUPUNCT_REPO=RUPunct/RUPunct_small`
-→ `~/.rupunct/punct` (SHA-256 of F32; not packed, hidden 312). Convert
+→ `~/.rupunct/punct` (SHA-256 of F32, then Q8_0; last dim padded to 32). Convert
 `pytorch_model.bin` → safetensors → Q8_0 (`numpy`; `RUPUNCT_Q8=0` keeps F32).
 Fetch does not download `pytorch_model.bin` when `model.safetensors` is already
 present.

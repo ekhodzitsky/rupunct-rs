@@ -5,6 +5,12 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Q8_0 pads the last dim to a multiple of 32, so `RUPunct_small` (hidden 312)
+  packs the same way as big. `scripts/fetch-model.sh` packs small after the
+  F32 SHA-256 check.
+
 ## [0.18.0] - 2026-08-31
 
 ### Changed

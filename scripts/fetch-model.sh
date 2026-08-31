@@ -6,8 +6,8 @@
 #
 # Default: RUPunct/RUPunct_big at the pinned revision into ~/.rupunct/RUPunct_big,
 # packed Q8_0. Skips pytorch_model.bin when model.safetensors is already present.
-# RUPunct_small goes to ~/.rupunct/punct (SHA-256 of F32, not packed: hidden 312)
-# and does not overwrite big. Override dest with RUPUNCT_MODEL.
+# RUPunct_small goes to ~/.rupunct/punct (SHA-256 of F32, then packed; last dim
+# padded to 32). Does not overwrite big. Override dest with RUPUNCT_MODEL.
 set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -136,7 +136,9 @@ else
   if [ -f "$DEST/pytorch_model.bin" ]; then
     check_sha256 "$DEST/pytorch_model.bin" "5b05a696d0a9629e0938852e221abcd84cc75ab67a4445fb0b4ea40630dd6b59"
   fi
-  if ! check_sha256 "$DEST/model.safetensors" "1b9d9c252616e79d44eb48883200223e9e77c333a2fa481f618ea9fd32f73c97"; then
+  if python3 "$HERE/convert-q8.py" --is-q8 "$DEST/model.safetensors"; then
+    echo "fetch-model: model.safetensors already Q8_0; skipping F32 sha256" >&2
+  elif ! check_sha256 "$DEST/model.safetensors" "1b9d9c252616e79d44eb48883200223e9e77c333a2fa481f618ea9fd32f73c97"; then
     if [ -f "$DEST/pytorch_model.bin" ]; then
       echo "fetch-model: model.safetensors hash mismatch; reconverting from pytorch_model.bin" >&2
       convert_bin
@@ -155,10 +157,6 @@ pack_q8() {
       return 0
       ;;
   esac
-  if [ "$REPO" = "$PINNED_REPO" ]; then
-    echo "fetch-model: skipping Q8 (RUPunct_small hidden=312)" >&2
-    return 0
-  fi
   if ! command -v python3 >/dev/null 2>&1; then
     echo "fetch-model: python3 required to pack Q8_0" >&2
     exit 1

@@ -29,6 +29,7 @@ fn should_quant_skips_norm_and_tiny() {
         &[128, 32]
     ));
     assert!(should_quant("classifier.weight", &[128, 32]));
+    assert!(should_quant("classifier.weight", &[16, 312]));
 }
 
 #[test]
@@ -119,4 +120,34 @@ fn gather_rows_matches_dequant() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn padded_last_dim_roundtrip_and_gemm() {
+    let n = 4usize;
+    let k = 40usize;
+    let mut w = vec![0.0f32; n * k];
+    for (i, x) in w.iter_mut().enumerate() {
+        *x = (i as f32).sin() * 0.03;
+    }
+    let shape = vec![n, k];
+    let wire = quant(&w, &shape).unwrap();
+    assert_eq!(wire.len(), n * 2 * BLOCK_Q8_0_BYTES);
+    let back = dequant(&wire, &shape).unwrap();
+    let mut max_err = 0.0f32;
+    for (a, b) in w.iter().zip(back.iter()) {
+        max_err = max_err.max((a - b).abs());
+    }
+    assert!(max_err < 0.02, "{max_err}");
+    let q = Q8Weight::from_wire(wire, shape).unwrap();
+    let lq = crate::linear::Linear::from_q8(q, None).unwrap();
+    let lf = crate::linear::Linear::from_slices(n, k, &back, None).unwrap();
+    let x = crate::tensor::Tensor::from_vec(vec![0.1; 2 * k], vec![2, k]).unwrap();
+    let yq = lq.forward(&x).unwrap();
+    let yf = lf.forward(&x).unwrap();
+    max_err = 0.0;
+    for (a, b) in yq.as_slice().iter().zip(yf.as_slice()) {
+        max_err = max_err.max((a - b).abs());
+    }
+    assert!(max_err < 1e-4, "{max_err}");
 }

@@ -1,6 +1,4 @@
-//! GGML Q8_0: f16 scale + 32×i8 per block.
-//! Linear weights stay packed on the mmap. GEMM dequants a small output tile
-//! into scratch (L2-sized) then the same F32 BLAS as an F32 checkpoint.
+//! GGML Q8_0: f16 scale + 32×i8 per block. Last dim is padded to 32 on disk.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -10,7 +8,6 @@ use crate::tensor::MappedFile;
 
 pub(crate) const QK8_0: usize = 32;
 pub(crate) const BLOCK_Q8_0_BYTES: usize = 34;
-/// Output-channel tile for dequant+SGEMM. Fits L2 with in_dim ≤ 3072.
 const TILE_N: usize = 128;
 #[cfg(test)]
 const MIN_ELEMENTS: usize = 4096;
@@ -101,7 +98,6 @@ impl Q8Weight {
         dequant(self.wire(), &self.shape)
     }
 
-    /// Dequant selected rows of a packed `[rows, hidden]` table into `out`.
     pub(crate) fn gather_rows(&self, ids: &[u32], out: &mut [f32]) -> TensorResult<()> {
         if self.shape.len() != 2 {
             return Err(TensorError::shape("q8 gather needs rank-2"));
@@ -128,7 +124,6 @@ impl Q8Weight {
         Ok(())
     }
 
-    /// `out[m,n] = x[m,k] @ W[n,k]^T` with W packed Q8_0.
     pub(crate) fn matmul_nt(&self, m: usize, x: &[f32], out: &mut [f32]) -> TensorResult<()> {
         if self.shape.len() != 2 {
             return Err(TensorError::shape("q8 matmul needs rank-2 weight"));
@@ -145,11 +140,13 @@ impl Q8Weight {
             return Err(TensorError::shape("q8 matmul x/out size"));
         }
         let wire = self.wire();
+        // Padded last dim (e.g. hidden=312): one GEMM. Multiples of 32 keep L2 tiles.
+        let tile = if k.is_multiple_of(QK8_0) { TILE_N } else { n };
         TILE.with(|slot| -> TensorResult<()> {
             let mut buf = slot.borrow_mut();
             let mut n0 = 0usize;
             while n0 < n {
-                let nt = (n - n0).min(TILE_N);
+                let nt = (n - n0).min(tile);
                 let need = nt
                     .checked_mul(k)
                     .ok_or_else(|| TensorError::shape("tile overflow"))?;
@@ -165,12 +162,24 @@ impl Q8Weight {
     }
 }
 
+fn pad_k(k: usize) -> usize {
+    k.div_ceil(QK8_0).saturating_mul(QK8_0)
+}
+
 fn packed_bytes(shape: &[usize]) -> TensorResult<usize> {
-    let n = numel(shape)?;
-    if n % QK8_0 != 0 {
-        return Err(TensorError::msg("q8_0 numel not multiple of 32"));
+    let Some(&k) = shape.last() else {
+        return Err(TensorError::shape("q8 empty shape"));
+    };
+    if k == 0 {
+        return Err(TensorError::shape("q8 last dim 0"));
     }
-    n.checked_div(QK8_0)
+    let n = numel(shape)?;
+    let rows = n / k;
+    let padded = rows
+        .checked_mul(pad_k(k))
+        .ok_or_else(|| TensorError::shape("q8 padded overflow"))?;
+    padded
+        .checked_div(QK8_0)
         .and_then(|b| b.checked_mul(BLOCK_Q8_0_BYTES))
         .ok_or_else(|| TensorError::shape("q8 packed overflow"))
 }
@@ -180,14 +189,8 @@ pub(crate) fn should_quant(name: &str, shape: &[usize]) -> bool {
     if name.contains("LayerNorm") {
         return false;
     }
-    let Some(&last) = shape.last() else {
-        return false;
-    };
     let n = shape.iter().try_fold(1usize, |a, &d| a.checked_mul(d));
-    matches!(
-        n,
-        Some(n) if n >= MIN_ELEMENTS && shape.len() >= 2 && last.is_multiple_of(QK8_0)
-    )
+    matches!(n, Some(n) if n >= MIN_ELEMENTS && shape.len() >= 2)
 }
 
 #[cfg(test)]
@@ -196,13 +199,20 @@ pub(crate) fn quant(w: &[f32], shape: &[usize]) -> TensorResult<Vec<u8>> {
     if w.len() != n {
         return Err(TensorError::shape("q8_0 quant len != shape"));
     }
-    if n % QK8_0 != 0 {
-        return Err(TensorError::msg("q8_0 numel not multiple of 32"));
+    let k = *shape.last().unwrap_or(&0);
+    if k == 0 {
+        return Err(TensorError::shape("q8 last dim 0"));
     }
-    let n_blocks = n / QK8_0;
+    let rows = n / k;
+    let k_pad = pad_k(k);
+    let mut padded = vec![0.0f32; rows * k_pad];
+    for r in 0..rows {
+        padded[r * k_pad..r * k_pad + k].copy_from_slice(&w[r * k..(r + 1) * k]);
+    }
+    let n_blocks = padded.len() / QK8_0;
     let mut out = vec![0u8; n_blocks * BLOCK_Q8_0_BYTES];
     for i in 0..n_blocks {
-        let xs = &w[i * QK8_0..(i + 1) * QK8_0];
+        let xs = &padded[i * QK8_0..(i + 1) * QK8_0];
         let mut amax = 0.0f32;
         for &x in xs {
             amax = amax.max(x.abs());
@@ -229,24 +239,14 @@ pub(crate) fn dequant(wire: &[u8], shape: &[usize]) -> TensorResult<Vec<f32>> {
 #[cfg(test)]
 fn dequant_into(wire: &[u8], shape: &[usize], out: &mut [f32]) -> TensorResult<()> {
     let n = numel(shape)?;
-    if out.len() != n {
-        return Err(TensorError::shape("q8_0 out len != shape"));
+    if out.len() != n || wire.len() != packed_bytes(shape)? {
+        return Err(TensorError::msg("q8_0 dequant size"));
     }
-    let expect = packed_bytes(shape)?;
-    if wire.len() != expect {
-        return Err(TensorError::msg(format!(
-            "q8_0 wire {} != {expect}",
-            wire.len()
-        )));
+    match shape {
+        [rows, k] => dequant_rows(wire, *rows, *k, 0, *rows, out),
+        [k] => dequant_rows(wire, 1, *k, 0, 1, out),
+        _ => Err(TensorError::shape("q8 dequant rank")),
     }
-    let n_blocks = n / QK8_0;
-    for i in 0..n_blocks {
-        dequant_block(
-            &wire[i * BLOCK_Q8_0_BYTES..(i + 1) * BLOCK_Q8_0_BYTES],
-            &mut out[i * QK8_0..(i + 1) * QK8_0],
-        );
-    }
-    Ok(())
 }
 
 fn dequant_rows(
@@ -257,19 +257,30 @@ fn dequant_rows(
     nt: usize,
     out: &mut [f32],
 ) -> TensorResult<()> {
-    if k % QK8_0 != 0 || n0.saturating_add(nt) > n || out.len() != nt.saturating_mul(k) {
+    if k == 0 || n0.saturating_add(nt) > n || out.len() != nt.saturating_mul(k) {
         return Err(TensorError::shape("q8 tile"));
     }
-    let bpr = k / QK8_0;
+    let k_pad = pad_k(k);
+    let bpr = k_pad / QK8_0;
     let row_bytes = bpr * BLOCK_Q8_0_BYTES;
+    let full = k / QK8_0;
+    let rem = k % QK8_0;
     for r in 0..nt {
         let src = (n0 + r) * row_bytes;
         let dst = r * k;
-        for bi in 0..bpr {
+        for bi in 0..full {
             dequant_block(
                 &wire[src + bi * BLOCK_Q8_0_BYTES..src + (bi + 1) * BLOCK_Q8_0_BYTES],
                 &mut out[dst + bi * QK8_0..dst + (bi + 1) * QK8_0],
             );
+        }
+        if rem != 0 {
+            let mut tail = [0.0f32; QK8_0];
+            dequant_block(
+                &wire[src + full * BLOCK_Q8_0_BYTES..src + (full + 1) * BLOCK_Q8_0_BYTES],
+                &mut tail,
+            );
+            out[dst + full * QK8_0..dst + k].copy_from_slice(&tail[..rem]);
         }
     }
     Ok(())
@@ -302,42 +313,22 @@ unsafe fn dequant_qs_neon(qs: *const i8, d: f32, dst: *mut f32) {
         let dv = vdupq_n_f32(d);
         let i8v0 = vld1q_s8(qs);
         let i8v1 = vld1q_s8(qs.add(16));
-        let s0 = vmovl_s8(vget_low_s8(i8v0));
-        let s1 = vmovl_s8(vget_high_s8(i8v0));
-        let s2 = vmovl_s8(vget_low_s8(i8v1));
-        let s3 = vmovl_s8(vget_high_s8(i8v1));
-        vst1q_f32(
-            dst,
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(s0))), dv),
-        );
-        vst1q_f32(
-            dst.add(4),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(s0))), dv),
-        );
-        vst1q_f32(
-            dst.add(8),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(s1))), dv),
-        );
-        vst1q_f32(
-            dst.add(12),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(s1))), dv),
-        );
-        vst1q_f32(
-            dst.add(16),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(s2))), dv),
-        );
-        vst1q_f32(
-            dst.add(20),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(s2))), dv),
-        );
-        vst1q_f32(
-            dst.add(24),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(s3))), dv),
-        );
-        vst1q_f32(
-            dst.add(28),
-            vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(s3))), dv),
-        );
+        let s = [
+            vmovl_s8(vget_low_s8(i8v0)),
+            vmovl_s8(vget_high_s8(i8v0)),
+            vmovl_s8(vget_low_s8(i8v1)),
+            vmovl_s8(vget_high_s8(i8v1)),
+        ];
+        for (i, si) in s.iter().enumerate() {
+            vst1q_f32(
+                dst.add(i * 8),
+                vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(*si))), dv),
+            );
+            vst1q_f32(
+                dst.add(i * 8 + 4),
+                vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(*si))), dv),
+            );
+        }
     }
 }
 
