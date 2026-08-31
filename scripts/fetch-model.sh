@@ -2,11 +2,12 @@
 # Install a pinned RUPunct checkpoint into $RUPUNCT_MODEL or ~/.rupunct/<name>.
 # Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
 # with torch + safetensors. Q8_0 packing needs numpy (`scripts/convert-q8.py`).
-# RUPUNCT_Q8=0 keeps F32 and leaves pytorch_model.bin in place.
+# RUPUNCT_Q8=0 keeps F32. pytorch_model.bin is dropped once safetensors exists.
 #
 # Default: RUPunct/RUPunct_big at the pinned revision into ~/.rupunct/RUPunct_big,
-# packed Q8_0. RUPunct_small goes to ~/.rupunct/punct (SHA-256 of upstream F32,
-# then packed) and does not overwrite big. Override dest with RUPUNCT_MODEL.
+# packed Q8_0. Skips pytorch_model.bin when model.safetensors is already present.
+# RUPunct_small goes to ~/.rupunct/punct (SHA-256 of F32, not packed: hidden 312)
+# and does not overwrite big. Override dest with RUPUNCT_MODEL.
 set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -50,10 +51,26 @@ else
   exit 1
 fi
 
-if [ "$HF_BIN" = hf ]; then
-  hf download "$REPO" --revision "$REVISION" --local-dir "$DEST"
-else
-  huggingface-cli download "$REPO" --revision "$REVISION" --local-dir "$DEST"
+hf_snapshot() {
+  if [ "$HF_BIN" = hf ]; then
+    hf download "$REPO" --revision "$REVISION" --local-dir "$DEST" "$@"
+  else
+    huggingface-cli download "$REPO" --revision "$REVISION" --local-dir "$DEST" "$@"
+  fi
+}
+
+hf_file() {
+  if [ "$HF_BIN" = hf ]; then
+    hf download "$REPO" "$1" --revision "$REVISION" --local-dir "$DEST"
+  else
+    huggingface-cli download "$REPO" "$1" --revision "$REVISION" --local-dir "$DEST"
+  fi
+}
+
+hf_snapshot --exclude pytorch_model.bin
+if [ ! -f "$DEST/model.safetensors" ]; then
+  echo "fetch-model: no model.safetensors yet; downloading pytorch_model.bin" >&2
+  hf_file pytorch_model.bin
 fi
 
 convert_bin() {
@@ -138,6 +155,10 @@ pack_q8() {
       return 0
       ;;
   esac
+  if [ "$REPO" = "$PINNED_REPO" ]; then
+    echo "fetch-model: skipping Q8 (RUPunct_small hidden=312)" >&2
+    return 0
+  fi
   if ! command -v python3 >/dev/null 2>&1; then
     echo "fetch-model: python3 required to pack Q8_0" >&2
     exit 1
@@ -149,9 +170,11 @@ pack_q8() {
   fi
   tmp="$DEST/model.q8.safetensors"
   python3 "$conv" "$DEST/model.safetensors" "$tmp"
-  mv "$tmp" "$DEST/model.safetensors"
-  rm -f "$DEST/pytorch_model.bin"
+  if [ -f "$tmp" ]; then
+    mv "$tmp" "$DEST/model.safetensors"
+  fi
 }
 
 pack_q8
+rm -f "$DEST/pytorch_model.bin"
 echo "ok $DEST ($REPO revision $REVISION)"

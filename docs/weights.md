@@ -10,7 +10,8 @@ Never commit `*.safetensors`. Git never contains weights.
 
 Needs `huggingface-cli` or `hf`. Conversion of `pytorch_model.bin` needs Python
 with `torch` + `safetensors`. Packing Q8_0 needs `numpy`. `RUPUNCT_Q8=0` keeps
-F32 (SHA-256 of small is the upstream F32 file, checked before packing).
+F32. Fetch skips the `.bin` when `model.safetensors` is already local. SHA-256
+of small is the F32 file; small is not packed.
 
 ```sh
 scripts/fetch-model.sh
@@ -23,7 +24,7 @@ Small (does not overwrite big):
 
 ```sh
 RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh
-# -> ~/.rupunct/punct
+# -> ~/.rupunct/punct  (F32; hidden 312)
 ```
 
 Override dest with `RUPUNCT_MODEL`. Search path at runtime: `--model-dir` / `-m`
@@ -54,8 +55,8 @@ Checkpoint license: see the model card before commercial use. Engine is MIT.
 stay mmap'd. Linear GEMM dequants an output tile; embedding gather dequants
 selected rows. LayerNorm and tiny tensors stay F32. On RUPunct_big: ~678 MB →
 ~180 MB on disk, warm RSS ~361 MB → ~127 MB. Punct micro-F1 on the 800-sentence
-cache matches F32 (0.845). `RUPunct_small` has hidden size 312 (not a multiple
-of 32), so most of its tensors stay F32.
+cache matches F32 (0.845). `RUPunct_small` is left F32 (hidden 312 is not a
+multiple of 32).
 
 ```sh
 scripts/convert-q8.py ~/.rupunct/RUPunct_big/model.safetensors /tmp/model.q8.safetensors

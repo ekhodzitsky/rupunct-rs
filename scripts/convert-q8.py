@@ -78,9 +78,6 @@ def write_st(path: Path, tensors: list[tuple[str, str, list[int], bytes]]) -> No
 def convert(src: Path, dst: Path) -> None:
     header, raw, base = parse_st(src)
     if is_q8(header):
-        if src.resolve() != dst.resolve():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_bytes(raw)
         print(f"convert-q8: already packed {src}", file=sys.stderr)
         return
     out: list[tuple[str, str, list[int], bytes]] = []
@@ -115,6 +112,9 @@ def convert(src: Path, dst: Path) -> None:
         out.append((name, dtype, shape, bytes(payload)))
         n_f += 1
         dst_bytes += len(payload)
+    if n_q == 0:
+        print(f"convert-q8: nothing to pack in {src}", file=sys.stderr)
+        return
     dst.parent.mkdir(parents=True, exist_ok=True)
     write_st(dst, out)
     print(

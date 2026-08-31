@@ -5,12 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-31
+
 ### Changed
 
 - `scripts/fetch-model.sh` packs Q8_0 after the F32 file is in place (needs
-  `numpy`). `RUPUNCT_Q8=0` keeps F32. Upstream SHA-256 for `RUPunct_small` still
-  checks the F32 `model.safetensors` before packing. A successful pack removes
-  `pytorch_model.bin`.
+  `numpy`). `RUPUNCT_Q8=0` keeps F32. `RUPunct_small` stays F32 (hidden 312 is
+  not a Q8_0 block size). Download skips `pytorch_model.bin` when
+  `model.safetensors` is already local; the bin is removed after a successful
+  fetch. Upstream SHA-256 for small still checks the F32 `model.safetensors`.
 
 ## [0.17.0] - 2026-08-31
 
