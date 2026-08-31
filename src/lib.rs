@@ -21,6 +21,7 @@ mod matmul;
 mod model;
 mod par;
 mod punct;
+mod q8;
 mod restore;
 mod shape;
 mod st;

@@ -12,30 +12,35 @@ use crate::model::{CONFIG_FILE, MODEL_FILE};
 use crate::tensor::Tensor;
 use crate::weights::load_safetensors_file;
 use crate::ws::{
-    add_inplace, check_emb_shape, gather_rows, layer_norm_from_ws, linear_from_ws, require_f32,
+    EmbTable, add_inplace, emb_from_ws, gather_emb, layer_norm_from_ws, linear_from_ws,
 };
 
 struct Embeddings {
-    word: Tensor,
-    position: Tensor,
-    token_type: Tensor,
+    word: EmbTable,
+    position: EmbTable,
+    token_type: EmbTable,
     layer_norm: LayerNorm,
 }
 
 impl Embeddings {
     fn load(ws: &crate::weights::WeightSet, config: &Config) -> Result<Self> {
-        let word = require_f32(ws, "bert.embeddings.word_embeddings.weight")?;
-        let position = require_f32(ws, "bert.embeddings.position_embeddings.weight")?;
-        let token_type = require_f32(ws, "bert.embeddings.token_type_embeddings.weight")?;
-        check_emb_shape(&word, config.vocab_size, config.hidden_size, "word")?;
-        check_emb_shape(
-            &position,
+        let word = emb_from_ws(
+            ws,
+            "bert.embeddings.word_embeddings.weight",
+            config.vocab_size,
+            config.hidden_size,
+            "word",
+        )?;
+        let position = emb_from_ws(
+            ws,
+            "bert.embeddings.position_embeddings.weight",
             config.max_position_embeddings,
             config.hidden_size,
             "position",
         )?;
-        check_emb_shape(
-            &token_type,
+        let token_type = emb_from_ws(
+            ws,
+            "bert.embeddings.token_type_embeddings.weight",
             config.type_vocab_size,
             config.hidden_size,
             "token_type",
@@ -62,11 +67,11 @@ impl Embeddings {
                 token_type_ids.len()
             )));
         }
-        let mut x = gather_rows(&self.word, input_ids)?;
-        let tt = gather_rows(&self.token_type, token_type_ids)?;
+        let mut x = gather_emb(&self.word, input_ids)?;
+        let tt = gather_emb(&self.token_type, token_type_ids)?;
         add_inplace(x.as_mut_slice(), tt.as_slice());
         let pos_ids: Vec<u32> = (0..seq as u32).collect();
-        let pos = gather_rows(&self.position, &pos_ids)?;
+        let pos = gather_emb(&self.position, &pos_ids)?;
         add_inplace(x.as_mut_slice(), pos.as_slice());
         Ok(self.layer_norm.forward(&x)?)
     }

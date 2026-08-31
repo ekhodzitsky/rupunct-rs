@@ -43,3 +43,19 @@ Default tokenizer for big has `lowercase=true`. Same `aggregation_strategy="firs
 per word, not HuggingFace entity grouping.
 
 Checkpoint license: see the model card before commercial use. Engine is MIT.
+
+## Q8_0 (disk only)
+
+Large MatMul and embedding tables can be stored as GGML Q8_0 (`{name}.q8_0` +
+`{name}.shape`). They stay packed on the mmap. Linear GEMM dequants an output
+tile; embedding gather dequants selected rows. LayerNorm and tiny tensors stay
+F32. On RUPunct_big: ~678 MB → ~180 MB on disk, warm RSS ~361 MB → ~127 MB.
+Punct micro-F1 on the 800-sentence cache matches F32 (0.845). Default fetch
+stays F32.
+
+```sh
+scripts/convert-q8.py ~/.rupunct/RUPunct_big/model.safetensors /tmp/model.q8.safetensors
+# point -m at a dir that has the q8 file as model.safetensors plus tokenizer/config
+```
+
+Do not replace the F32 file until `scripts/f1.py` on the 800-sentence cache matches.

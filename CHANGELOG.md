@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-31
+
+### Added
+
+- Optional GGML Q8_0 packing for large Linear and embedding weights
+  (`scripts/convert-q8.py`). Packed tensors stay mmap'd. Linear GEMM dequants an
+  output tile; embedding gather dequants selected rows. LayerNorm stays F32.
+  Default fetch remains F32. On `RUPunct_big` a converted file is ~678 MB →
+  ~180 MB on disk and ~361 MB → ~127 MB warm RSS; punct micro-F1 on the
+  800-sentence cache matches F32 (0.845).
+
 ### Changed
 
 - Root README is a short landing page. CLI/JSONL/library, F1 tables, and

@@ -1,10 +1,18 @@
 use crate::error::{TensorError, TensorResult};
+use crate::q8::Q8Weight;
 use crate::tensor::Tensor;
 
-/// F32 linear layer: `y = x @ W^T + b`, weight layout `[out_dim, in_dim]`.
+#[derive(Debug, Clone)]
+enum Weight {
+    F32(Tensor),
+    Q8(Q8Weight),
+}
+
+/// Linear: `y = x @ W^T + b`, weight layout `[out_dim, in_dim]`.
+/// Q8_0 stays packed; GEMM dequants an output tile then F32 BLAS.
 #[derive(Debug, Clone)]
 pub(crate) struct Linear {
-    weight: Tensor,
+    weight: Weight,
     bias: Option<Tensor>,
 }
 
@@ -22,7 +30,32 @@ impl Linear {
                 b.dims()
             )));
         }
-        Ok(Self { weight, bias })
+        Ok(Self {
+            weight: Weight::F32(weight),
+            bias,
+        })
+    }
+
+    pub(crate) fn from_q8(weight: Q8Weight, bias: Option<Tensor>) -> TensorResult<Self> {
+        let shape = weight.shape();
+        if shape.len() != 2 {
+            return Err(TensorError::shape(
+                "Linear Q8 weight must be rank-2 [out,in]",
+            ));
+        }
+        let out = shape[0];
+        if let Some(ref b) = bias
+            && (b.rank() != 1 || b.dim(0)? != out)
+        {
+            return Err(TensorError::shape(format!(
+                "bias shape {:?} != [out={out}]",
+                b.dims()
+            )));
+        }
+        Ok(Self {
+            weight: Weight::Q8(weight),
+            bias,
+        })
     }
 
     #[cfg(test)]
@@ -41,11 +74,17 @@ impl Linear {
     }
 
     pub(crate) fn out_dim(&self) -> usize {
-        self.weight.dims()[0]
+        match &self.weight {
+            Weight::F32(t) => t.dims()[0],
+            Weight::Q8(q) => q.shape()[0],
+        }
     }
 
     pub(crate) fn in_dim(&self) -> usize {
-        self.weight.dims()[1]
+        match &self.weight {
+            Weight::F32(t) => t.dims()[1],
+            Weight::Q8(q) => q.shape()[1],
+        }
     }
 
     /// `x` rank-2 `[batch, in]` → `[batch, out]`.
@@ -62,7 +101,19 @@ impl Linear {
                 x.dim(1)?
             )));
         }
-        let mut y = x.matmul_weight_t(&self.weight)?;
+        let mut y = match &self.weight {
+            Weight::F32(t) => x.matmul_weight_t(t)?,
+            Weight::Q8(q) => {
+                let m = x.dim(0)?;
+                let n = q.shape()[0];
+                let n_out = m
+                    .checked_mul(n)
+                    .ok_or_else(|| TensorError::shape("m*n overflow"))?;
+                let mut out = vec![0.0f32; n_out];
+                q.matmul_nt(m, x.as_slice(), &mut out)?;
+                Tensor::from_vec(out, vec![m, n])?
+            }
+        };
         if let Some(ref b) = self.bias {
             y.add_bias_2d_inplace(b)?;
         }

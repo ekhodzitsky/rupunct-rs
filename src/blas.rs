@@ -188,6 +188,77 @@ pub fn gemm_nt_weight(m: usize, k: usize, n: usize, a: &[f32], b_t: &[f32], c: &
     gemm_row_x_col(m, k, n, 1.0, a, b_t, 0.0, c);
 }
 
+/// Row-major `c[m, n_full]` panel: `c[:, n0:n0+nt] = a[m,k] @ b_tile[nt,k]^T`.
+pub fn gemm_nt_weight_panel(
+    m: usize,
+    k: usize,
+    n_full: usize,
+    n0: usize,
+    nt: usize,
+    a: &[f32],
+    b_tile: &[f32],
+    c: &mut [f32],
+) {
+    assert_eq!(a.len(), m * k);
+    assert_eq!(b_tile.len(), nt * k);
+    assert_eq!(c.len(), m * n_full);
+    assert!(n0.checked_add(nt).is_some_and(|e| e <= n_full));
+    if m == 0 || nt == 0 || k == 0 {
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: lengths checked; panel starts at column `n0`; ldc = n_full.
+        unsafe {
+            sgemm(
+                b'T',
+                b'N',
+                nt as i32,
+                m as i32,
+                k as i32,
+                1.0,
+                b_tile,
+                k as i32,
+                a,
+                k as i32,
+                0.0,
+                &mut c[n0..],
+                n_full as i32,
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        use gemm::{Parallelism, gemm};
+        // SAFETY: lengths checked; `c[n0..]` uniquely borrowed; col stride n_full.
+        unsafe {
+            gemm(
+                m,
+                nt,
+                k,
+                c[n0..].as_mut_ptr(),
+                1,
+                n_full as isize,
+                false,
+                a.as_ptr(),
+                1,
+                k as isize,
+                b_tile.as_ptr(),
+                k as isize,
+                1,
+                0.0f32,
+                1.0f32,
+                false,
+                false,
+                false,
+                Parallelism::Rayon(0),
+            );
+        }
+    }
+}
+
 /// `scores[t,t] = q[t,d] @ k[t,d]^T` with Q/K in `[t, ld]` and the head at `off`.
 pub fn gemm_scores_strided(
     t: usize,

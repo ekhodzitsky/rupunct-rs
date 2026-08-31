@@ -10,6 +10,7 @@ pub(crate) enum Dtype {
     F32,
     I32,
     I64,
+    U8,
     Other,
 }
 
@@ -93,6 +94,7 @@ fn parse_tensor(
         Some("F32") => Dtype::F32,
         Some("I32") => Dtype::I32,
         Some("I64") => Dtype::I64,
+        Some("U8") => Dtype::U8,
         Some(_) => Dtype::Other,
         None => {
             return Err(TensorError::msg(format!("{name}: missing dtype")));
@@ -125,9 +127,10 @@ fn parse_tensor(
     if abs_end > file_len {
         return Err(TensorError::msg(format!("{name}: payload OOB")));
     }
-    if dtype == Dtype::F32 || dtype == Dtype::I32 || dtype == Dtype::I64 {
+    if dtype == Dtype::F32 || dtype == Dtype::I32 || dtype == Dtype::I64 || dtype == Dtype::U8 {
         let width = match dtype {
             Dtype::I64 => 8usize,
+            Dtype::U8 => 1,
             _ => 4,
         };
         let nelem = shape_product(&shape)?;
@@ -187,6 +190,11 @@ pub(crate) enum WriteTensor {
         shape: Vec<usize>,
         data: Vec<i64>,
     },
+    U8 {
+        name: String,
+        shape: Vec<usize>,
+        data: Vec<u8>,
+    },
 }
 
 #[cfg(test)]
@@ -212,6 +220,9 @@ pub(crate) fn serialize(tensors: &[WriteTensor]) -> TensorResult<Vec<u8>> {
                 shape.clone(),
                 data.iter().flat_map(|x| x.to_le_bytes()).collect(),
             ),
+            WriteTensor::U8 { name, shape, data } => {
+                (name.clone(), "U8", shape.clone(), data.clone())
+            }
         })
         .collect();
     items.sort_by(|a, b| a.0.cmp(&b.0));
