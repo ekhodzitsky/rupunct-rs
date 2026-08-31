@@ -1,39 +1,19 @@
 # rupunct
 
 [![CI](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ekhodzitsky/rupunct-rs/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rustc-1.88%2B-orange?logo=rust)](rust-toolchain.toml)
-[![Checkpoint](https://img.shields.io/badge/checkpoint-RUPunct__big-yellow)](https://huggingface.co/RUPunct/RUPunct_big)
 
-On-device **Russian punctuation and casing** restoration. One binary. No cloud.
+On-device Russian punctuation and casing restoration. One binary. No cloud.
 
-Input is unpunctuated Russian text. Output is the same words with punctuation
-and capitalization restored. Inference is a local BERT token-classifier
-compatible with [RUPunct/RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big)
-(default) and [RUPunct_small](https://huggingface.co/RUPunct/RUPunct_small)
-(`aggregation_strategy="first"` on **each word**, not HuggingFace entity
-grouping of consecutive identical tags).
+```text
+привет как дела  →  Привет, как дела?
+```
 
-Weights stay off git. The engine never opens a network socket.
-
-Default checkpoint is **RUPunct_big** (12×768). `RUPunct_small` (3×312) is
-the CPU/size option, not SOTA restore. This repo is a faithful on-device
-engine for both.
-
-## Contents
-
-- [Install](#install)
-- [CLI](#cli)
-- [JSONL worker](#jsonl-worker)
-- [Library](#library)
-- [Quality](#quality)
-- [Weights](#weights)
-- [License](#license)
+Local BERT. Default checkpoint [RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big).
+Weights stay off git. The process never opens a network socket.
 
 ## Install
 
-Rust **1.88+** (`rust-toolchain.toml`). macOS uses Accelerate; Linux and Windows
-use `gemm`.
+Rust **1.88+**. Not on crates.io.
 
 ```sh
 scripts/fetch-model.sh
@@ -41,178 +21,49 @@ cargo build --release
 ./target/release/rupunct --text "привет как дела"
 ```
 
-Checkpoint layout (three files in `$RUPUNCT_MODEL` or `~/.rupunct/RUPunct_big`):
+macOS uses Accelerate; Linux and Windows use `gemm`.
 
-`model.safetensors` · `tokenizer.json` · `config.json`
-
-Not on crates.io (`publish = false`). Do not `cargo install` from a registry.
-
-## CLI
+## Use
 
 ```sh
-./target/release/rupunct --text "привет меня зовут анна"
-./target/release/rupunct "привет как дела"
-./target/release/rupunct --strip-punct --lowercase --text "привет, как дела"
-./target/release/rupunct --complete bash >> ~/.bash_completion
+rupunct --text "привет как дела"
+rupunct --jsonl          # default when stdin is not a TTY
 ```
-
-| Flag / mode | Behavior |
-|-------------|----------|
-| One-shot | `--text`, `[TEXT]`, or `--file` (`-` = stdin) |
-| Worker | non-TTY stdin, or `--jsonl` |
-| TTY with no input | usage error **2**, not help |
-| `--strip-punct` | drop isolated punctuation tokens (off by default) |
-| `--lowercase` | lowercase words before the encoder (off by default) |
-| `--lossy` | on restore failure, emit the original text (exit **0**) |
-| `--max-seq` | BERT window, ≥ 3 and ≤ checkpoint (`512` on big, `2048` on small) |
-| `--threads` | parallel restore windows, ≥ 1 (default: available parallelism) |
-
-```
-  0  success (--lossy restore failure is success)
-  1  load or restore failure
-  2  usage error
-```
-
-`--text` / `--file` / stdin bodies are capped at **8 MiB**. JSONL frames at **1 MiB**.
-Non-UTF-8 argv is usage (exit **2**).
-
-`--strip-punct` fixes `привет, как` → double marks. `--lowercase` fixes `ООО` →
-`Ооо` titlecase. Both default **off** so the HuggingFace card path is unchanged.
-
-## JSONL worker
-
-Stdin that is not a TTY (pipe or redirect) without `--text` / `--file` / `[TEXT]`
-is the worker. `--jsonl` forces it. `--text -` is oneshot from stdin.
-
-```text
-{"ready":true}
-{"id":1,"text":"привет как дела"}
-{"id":1,"text":"Привет, как дела?","words":[{"word":"привет","text":"Привет,","label":"UPPER_COMMA","score":0.99}, ...]}
-{"text":""}
-{"error":"text is empty"}
-```
-
-Request-level failures (bad JSON, empty `text`, restore error, oversized line,
-invalid UTF-8) are `{"error":"…"}` frames; the loop continues. Optional `"id"`
-is echoed. Independent requests run in parallel (`--threads`); responses stay
-in input order. Only a broken stdin/stdout aborts the worker. JSONL `--lossy` emits
-`{"text":…}` instead of `{"error":…}`. Empty JSONL `"text"` is an error frame;
-oneshot empty input is identity.
-
-Each `words[]` entry has `word` / `text` / `label` / `score` / `start` / `end`
-(byte offsets into the original string). `score` is softmax, not calibrated.
-
-## Library
 
 ```rust
-use rupunct::{Punctuator, RestoreOpts, default_model_dir};
+use rupunct::{Punctuator, default_model_dir};
 
 let p = Punctuator::load(&default_model_dir())?;
-let ru = p.restore("привет как дела")?;
-let ru = p.restore_with("привет как дела", RestoreOpts {
-    max_window_tokens: 256,
-    overlap_tokens: 32,
-    ..RestoreOpts::default()
-})?;
-let words = p.restore_words("привет как дела")?;
-let batch = p.restore_batch(&["привет", "как дела"])?;
-// words[i].start / end are byte offsets into the original string
+p.restore("привет как дела")?;
 ```
 
-`restore` returns `Err` on inference failure. `restore_lossy` returns the
-original string instead. Output is spliced into the original string (newlines,
-tabs, and hyphens stay; `--strip-punct` deletes those spans).
-
-Inputs longer than 512 WordPiece tokens (or `max_position_embeddings` if
-smaller) are split on word boundaries with a 64-token overlap. Independent
-windows run in parallel (`std::thread`; `--threads` / `RestoreOpts.threads`,
-`0` = auto). Default **big**
-allows **512** positions (matches the default window). Small allows **2048**;
-`--max-seq 2048` is small-only. An explicit `--max-seq` larger than the
-checkpoint is an error (the library still clamps `RestoreOpts` for tiny test
-models). `--overlap` must be smaller than `--max-seq`.
+Flags, JSONL, library, windows, `--threads`: [docs/usage.md](docs/usage.md)
 
 ## Quality
 
-`RUPunct_small` is a 3-layer BERT-tiny (hidden 312, ~111 MB F32). The card
-targets simple CPU texts, **not** SOTA restore. Typical outputs on the pinned
-checkpoint:
+Local 800-sentence cache (UD SynTagRus test + Common Voice ru, **not CI**):
 
-| Input | Output |
-|-------|--------|
-| `привет как дела` | `Привет, как дела?` |
-| `ты пойдешь со мной в кино` | `Ты пойдешь со мной в кино?` |
-| already-punctuated `привет, как дела` | double marks unless `--strip-punct` |
+| system | exact | punct F1 |
+|--------|------:|---------:|
+| rupunct `RUPunct_big` | **58%** | **0.85** |
+| [Kontur SBERT-large](https://huggingface.co/kontur-ai/sbert_punc_case_ru) | 49% | 0.79 |
+| [Silero TE](https://github.com/snakers4/silero-models) | 37% | 0.75 |
 
-Local HuggingFace parity (`scripts/hf-parity.py`, not CI) is **39/39** on
-`tests/fixtures/hf_parity_golden.json`: first-subtoken labels match the encoder.
-Space-separated inputs also match a per-word `process_token` join. Splice keeps
-hyphens, newlines, and tabs; the join does not. Consecutive identical tags are
-**not** merged the way `pipeline(..., aggregation_strategy="first")` groups
-entities.
+This gold is written + read-speech, not interview ASR. Kontur only predicts `. , ?`.
+The engine matches HuggingFace `aggregation_strategy="first"` **per word** (39/39 on small).
+`RUPunct_small` is the CPU/size option, not the quality default. The ceiling is the checkpoint.
 
-F1 is `scripts/f1.py` (not CI). The 31-sentence in-tree set is a **smoke** test
-and ranked small above big; that ranking does **not** hold on public corpora.
-
-External gold (local cache, not git): 400 sentences from the
-[UD Russian-SynTagRus](https://github.com/UniversalDependencies/UD_Russian-SynTagRus)
-test split (CC BY-NC-SA 4.0) and 400 [Common Voice](https://github.com/common-voice/common-voice)
-ru prompts (CC0). Golos transcripts have **no** punctuation, so they cannot
-be F1 gold.
-
-| checkpoint | split | n | exact | punct micro-F1 (excl. `O`) | case acc. |
-|------------|-------|---|-------|----------------------------|-----------|
-| small | SynTagRus test | 400 | 40% | 0.78 | 97% |
-| small | Common Voice ru | 400 | 53% | 0.76 | 98% |
-| small | all | 800 | 46% | 0.77 | 98% |
-| big | SynTagRus test | 400 | 54% | 0.86 | 98% |
-| big | Common Voice ru | 400 | 62% | 0.83 | 98% |
-| big | all | 800 | 58% | 0.85 | 98% |
-
-Same 800 sentences, `scripts/f1.py --system` (not CI):
-
-| system | exact | punct micro-F1 | case acc. |
-|--------|-------|----------------|-----------|
-| rupunct `RUPunct_big` | 58% | 0.85 | 98% |
-| [kontur-ai/sbert_punc_case_ru](https://huggingface.co/kontur-ai/sbert_punc_case_ru) | 49% | 0.79 | 98% |
-| [Silero TE](https://github.com/snakers4/silero-models) | 37% | 0.75 | 97% |
-
-Kontur predicts only `. , ?` (no `! : ; …`). Silero TE predicts `.,-!?—`.
-Training domains differ; this gold is written UD + read-speech prompts.
-
-Default is **big** (~711 MB F32, `max_position_embeddings` **512**,
-`lowercase=true` tokenizer). Small is the CPU option (111 MB, 2048 positions).
-Same 33 labels. Live goldens (`cargo test --lib -- --ignored`) lock **small**
-strings at `~/.rupunct/punct`; they are not a linguistic oracle.
-
-```sh
-scripts/fetch-eval.py
-scripts/f1.py --gold ~/.rupunct/eval/f1_gold.json --quiet
-scripts/f1.py --system kontur --gold ~/.rupunct/eval/f1_gold.json --quiet
-scripts/f1.py --system silero --gold ~/.rupunct/eval/f1_gold.json --quiet
-# small (does not overwrite big):
-RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh
-rupunct -m ~/.rupunct/punct --text "привет как дела"
-```
-
-SHA-256 pins are only for `RUPunct_small`. Override dest with `RUPUNCT_MODEL`.
+Tables, gold, scripts: [docs/quality.md](docs/quality.md)
 
 ## Weights
 
-Download [RUPunct/RUPunct_big](https://huggingface.co/RUPunct/RUPunct_big)
-(MIT) and convert `pytorch_model.bin` → `model.safetensors`:
+Default: `~/.rupunct/RUPunct_big` (`RUPUNCT_MODEL` or `-m`).
+Small: `RUPUNCT_REPO=RUPunct/RUPunct_small` → `~/.rupunct/punct`.
 
-```sh
-scripts/fetch-model.sh
-# -> ~/.rupunct/RUPunct_big
-```
+[docs/weights.md](docs/weights.md)
 
-Small: `RUPUNCT_REPO=RUPunct/RUPunct_small scripts/fetch-model.sh` → `~/.rupunct/punct`.
+## More
 
-Override the search path with `--model-dir` / `-m` or `RUPUNCT_MODEL`. Do not
-commit `*.safetensors`.
-
-## License
+[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [License](LICENSE) · [NOTICE](NOTICE)
 
 MIT (engine). Checkpoint: see the RUPunct model card before commercial use.
-Eval corpora used by `scripts/fetch-eval.py` stay off git; see [NOTICE](NOTICE).

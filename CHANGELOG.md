@@ -5,6 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Root README is a short landing page. CLI/JSONL/library, F1 tables, and
+  weight fetch live in `docs/usage.md`, `docs/quality.md`, `docs/weights.md`.
+
 ## [0.16.0] - 2026-08-31
 
 ### Added

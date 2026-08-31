@@ -1,6 +1,8 @@
 # rupunct — Agent Guide
 
 On-device Russian punctuation and casing restoration. One binary. No cloud.
+User-facing docs: [README.md](README.md) and [docs/](docs/). Do not bloat the
+root README; put detail in `docs/usage.md`, `docs/quality.md`, `docs/weights.md`.
 
 Input: unpunctuated Russian text.
 Output: the same words with punctuation and capitalization restored.
