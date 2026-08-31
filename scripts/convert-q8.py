@@ -32,6 +32,10 @@ def parse_st(path: Path) -> tuple[dict, bytes, int]:
     return header, raw, base
 
 
+def is_q8(header: dict) -> bool:
+    return any(name.endswith(".q8_0") for name in header if name != "__metadata__")
+
+
 def should_quant(name: str, shape: list[int], arr: np.ndarray) -> bool:
     if "LayerNorm" in name:
         return False
@@ -73,6 +77,12 @@ def write_st(path: Path, tensors: list[tuple[str, str, list[int], bytes]]) -> No
 
 def convert(src: Path, dst: Path) -> None:
     header, raw, base = parse_st(src)
+    if is_q8(header):
+        if src.resolve() != dst.resolve():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(raw)
+        print(f"convert-q8: already packed {src}", file=sys.stderr)
+        return
     out: list[tuple[str, str, list[int], bytes]] = []
     n_q = 0
     n_f = 0

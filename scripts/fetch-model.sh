@@ -1,12 +1,15 @@
 #!/bin/sh
 # Install a pinned RUPunct checkpoint into $RUPUNCT_MODEL or ~/.rupunct/<name>.
 # Needs huggingface-cli (or `hf`). Conversion of pytorch_model.bin needs Python
-# with torch + safetensors.
+# with torch + safetensors. Q8_0 packing needs numpy (`scripts/convert-q8.py`).
+# RUPUNCT_Q8=0 keeps F32 and leaves pytorch_model.bin in place.
 #
-# Default: RUPunct/RUPunct_big at the pinned revision into ~/.rupunct/RUPunct_big.
-# RUPunct_small goes to ~/.rupunct/punct (SHA-256 verified) and does not overwrite
-# big. Override dest with RUPUNCT_MODEL.
+# Default: RUPunct/RUPunct_big at the pinned revision into ~/.rupunct/RUPunct_big,
+# packed Q8_0. RUPunct_small goes to ~/.rupunct/punct (SHA-256 of upstream F32,
+# then packed) and does not overwrite big. Override dest with RUPUNCT_MODEL.
 set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 PINNED_REPO="RUPunct/RUPunct_small"
 # Pin: RUPunct/RUPunct_small @ 2024-05-01 (config hidden=312, max_pos=2048).
@@ -127,4 +130,28 @@ else
     fi
   fi
 fi
+
+pack_q8() {
+  case "${RUPUNCT_Q8:-1}" in
+    0 | false | no | off)
+      echo "fetch-model: skipping Q8 (RUPUNCT_Q8=0)" >&2
+      return 0
+      ;;
+  esac
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "fetch-model: python3 required to pack Q8_0" >&2
+    exit 1
+  fi
+  conv="$HERE/convert-q8.py"
+  if [ ! -f "$conv" ]; then
+    echo "fetch-model: missing $conv" >&2
+    exit 1
+  fi
+  tmp="$DEST/model.q8.safetensors"
+  python3 "$conv" "$DEST/model.safetensors" "$tmp"
+  mv "$tmp" "$DEST/model.safetensors"
+  rm -f "$DEST/pytorch_model.bin"
+}
+
+pack_q8
 echo "ok $DEST ($REPO revision $REVISION)"

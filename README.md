@@ -16,7 +16,7 @@ Weights stay off git. The process never opens a network socket.
 Rust **1.88+**. Not on crates.io.
 
 ```sh
-scripts/fetch-model.sh
+scripts/fetch-model.sh   # Q8_0 into ~/.rupunct/RUPunct_big (~180 MB)
 cargo build --release
 ./target/release/rupunct --text "привет как дела"
 ```

@@ -44,9 +44,9 @@ flags is the JSONL worker (`--jsonl` forces it). Weights:
 Windows if `HOME` is unset). Non-UTF-8 argv is usage (exit 2).
 
 Default checkpoint: HuggingFace `RUPunct/RUPunct_big` (pinned revision in
-`scripts/fetch-model.sh`). Small: `RUPUNCT_REPO=RUPunct/RUPunct_small` →
-`~/.rupunct/punct` (SHA-256 verified). Convert `pytorch_model.bin` →
-safetensors.
+`scripts/fetch-model.sh`), packed Q8_0. Small: `RUPUNCT_REPO=RUPunct/RUPunct_small`
+→ `~/.rupunct/punct` (SHA-256 of upstream F32, then packed). Convert
+`pytorch_model.bin` → safetensors → Q8_0 (`numpy`; `RUPUNCT_Q8=0` keeps F32).
 
 Restore windows: min(512, `max_position_embeddings`) tokens, 64-token overlap
 (`--max-seq` ≥ 3, `--overlap` < `--max-seq`, or `RestoreOpts`). Explicit
