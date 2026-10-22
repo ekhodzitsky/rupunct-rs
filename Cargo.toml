@@ -7,7 +7,7 @@ license = "MIT"
 publish = ["crates-io"]
 include = [
     "src/**", "tests/fixtures/**", "docs/**",
-    "scripts/**", "Cargo.lock", "README.md", "LICENSE", "NOTICE",
+    "scripts/*.py", "scripts/*.sh", "Cargo.lock", "README.md", "LICENSE", "NOTICE",
     "CHANGELOG.md", "CONTRIBUTING.md", "AGENTS.md", "rust-toolchain.toml",
 ]
 description = "On-device Russian punctuation and casing restoration. One binary. No cloud."
