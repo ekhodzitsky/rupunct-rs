@@ -13,13 +13,28 @@ Weights stay off git. The process never opens a network socket.
 
 ## Install
 
-Rust **1.88+**. Not on crates.io.
+Rust **1.88+**. Install the CLI from crates.io:
 
 ```sh
+cargo install rupunct --version 0.19.1 --locked
+```
+
+For Rust applications, add `rupunct = "0.19.1"` to `[dependencies]`.
+Weights are installed separately. Fetch them from the matching source release
+(or build the executable from source):
+
+```sh
+git clone --branch v0.19.1 https://github.com/ekhodzitsky/rupunct-rs.git
+cd rupunct-rs
 scripts/fetch-model.sh   # Q8_0 into ~/.rupunct/RUPunct_big (~180 MB)
 cargo build --release
 ./target/release/rupunct --text "привет как дела"
 ```
+
+Fetching weights requires the Hugging Face CLI and Python conversion tools;
+see [setup prerequisites](docs/weights.md#fetch). Inference itself needs no Python.
+The shell fetch script runs on Unix or under WSL; native Windows users can
+copy a prepared model directory and pass `-m`.
 
 macOS uses Accelerate; Linux and Windows use `gemm`.
 
@@ -66,4 +81,5 @@ Small: `RUPUNCT_REPO=RUPunct/RUPunct_small` → `~/.rupunct/punct`.
 
 [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [License](LICENSE) · [NOTICE](NOTICE)
 
-MIT (engine). Checkpoint: see the RUPunct model card before commercial use.
+MIT (engine). The upstream small and big checkpoint cards declare MIT;
+weights are distributed separately. See [NOTICE](NOTICE).

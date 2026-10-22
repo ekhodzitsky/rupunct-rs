@@ -5,6 +5,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-22
+
+### Added
+
+- Crates.io package configuration, archive verification in CI, and a first-release procedure.
+- Source installation prerequisites and attribution for both supported checkpoints.
+
 ## [0.19.0] - 2026-08-31
 
 ### Changed

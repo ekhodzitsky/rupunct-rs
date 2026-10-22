@@ -18,3 +18,5 @@ python3 scripts/test-convert-q8.py
 
 Live restore against real weights is local only (`cargo test --lib -- --ignored`).
 Weights must not enter git.
+
+Release maintainers: [publication procedure](docs/releasing.md).

@@ -8,3 +8,5 @@ pytorch_model.bin
 .kimi/
 __pycache__/
 *.pyc
+
+.venv/

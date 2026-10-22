@@ -5,8 +5,13 @@ Copyright (c) 2026 Evgeny Khodzitsky
 
 Engine: MIT (this repository).
 
-Checkpoint: compatible with RUPunct/RUPunct_small (MIT). Weights are not
-shipped in this repository. Confirm the model card before commercial use.
+Checkpoints: RUPunct/RUPunct_small and RUPunct/RUPunct_big. Both upstream
+model cards declare MIT. Weights are not shipped in this repository or crate.
+Model authorship and training are separate from this Rust implementation.
+Upstream cards:
+- https://huggingface.co/RUPunct/RUPunct_small
+- https://huggingface.co/RUPunct/RUPunct_big
+Preserve upstream license and attribution when redistributing weights.
 
 Optional local F1 cache (`scripts/fetch-eval.py`, not in git):
 - UD Russian-SynTagRus test — CC BY-NC-SA 4.0

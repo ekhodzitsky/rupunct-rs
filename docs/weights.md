@@ -8,6 +8,14 @@ Never commit `*.safetensors`. Git never contains weights.
 
 ## Fetch
 
+From a source checkout, create an isolated Python environment:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install huggingface_hub torch safetensors numpy
+```
+
 Needs `huggingface-cli` or `hf`. Conversion of `pytorch_model.bin` needs Python
 with `torch` + `safetensors`. Packing Q8_0 needs `numpy`. `RUPUNCT_Q8=0` keeps
 F32. Fetch skips the `.bin` when `model.safetensors` is already local. SHA-256
@@ -46,7 +54,8 @@ SHA-256 pins are only for `RUPunct_small`. Pins live in `scripts/fetch-model.sh`
 Default tokenizer for big has `lowercase=true`. Same `aggregation_strategy="first"`
 per word, not HuggingFace entity grouping.
 
-Checkpoint license: see the model card before commercial use. Engine is MIT.
+Both upstream checkpoint cards declare MIT. Engine code is MIT too; model
+weights and their attribution remain separate (see [NOTICE](../NOTICE)).
 
 ## Q8_0
 

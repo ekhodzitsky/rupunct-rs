@@ -1,10 +1,15 @@
 [package]
 name = "rupunct"
-version = "0.19.0"
+version = "0.19.1"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-publish = false
+publish = ["crates-io"]
+include = [
+    "src/**", "tests/fixtures/**", "docs/**",
+    "scripts/**", "Cargo.lock", "README.md", "LICENSE", "NOTICE",
+    "CHANGELOG.md", "CONTRIBUTING.md", "AGENTS.md", "rust-toolchain.toml",
+]
 description = "On-device Russian punctuation and casing restoration. One binary. No cloud."
 repository = "https://github.com/ekhodzitsky/rupunct-rs"
 authors = ["Evgeny Khodzitsky"]
